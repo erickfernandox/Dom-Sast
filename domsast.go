@@ -164,355 +164,236 @@ func getRandomParams(params []string, count int) []string {
 	return r[:count]
 }
 
-// getAllDangerousFunctions retorna todas as funções perigosas DOM XSS/Redirect
-func getAllDangerousFunctions() []struct {
-	name    string
-	pattern string
-} {
-	return []struct {
-		name    string
-		pattern string
-	}{
-		// ========== EXECUÇÃO DE CÓDIGO (CRÍTICO) ==========
-		// eval()
-		{"EVAL", `eval\s*\(\s*["']EFX`},
-		{"EVAL_SINGLE", `eval\s*\(\s*[']EFX`},
-		{"EVAL_VAR", `eval\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// Function()
-		{"FUNCTION", `new\s+Function\s*\(\s*["']EFX`},
-		{"FUNCTION_SINGLE", `new\s+Function\s*\(\s*[']EFX`},
-		{"FUNCTION_VAR", `new\s+Function\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// setTimeout()
-		{"SETTIMEOUT", `setTimeout\s*\(\s*["']EFX`},
-		{"SETTIMEOUT_SINGLE", `setTimeout\s*\(\s*[']EFX[']`},
-		{"SETTIMEOUT_VAR", `setTimeout\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// setInterval()
-		{"SETINTERVAL", `setInterval\s*\(\s*["']EFX`},
-		{"SETINTERVAL_SINGLE", `setInterval\s*\(\s*[']EFX[']`},
-		{"SETINTERVAL_VAR", `setInterval\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// setImmediate()
-		{"SETIMMEDIATE", `setImmediate\s*\(\s*["']EFX`},
-		{"SETIMMEDIATE_SINGLE", `setImmediate\s*\(\s*[']EFX[']`},
-		{"SETIMMEDIATE_VAR", `setImmediate\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// execScript() (IE)
-		{"EXECSCRIPT", `execScript\s*\(\s*["']EFX`},
-		{"EXECSCRIPT_SINGLE", `execScript\s*\(\s*[']EFX[']`},
-		{"EXECSCRIPT_VAR", `execScript\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// ========== REDIRECIONAMENTO (ALTO) ==========
-		// location
-		{"LOCATION", `location\s*=\s*["']EFX`},
-		{"LOCATION_SINGLE", `location\s*=\s*[']EFX[']`},
-		{"LOCATION_VAR", `location\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// location.href
-		{"LOCATION_HREF", `location\.href\s*=\s*["']EFX`},
-		{"LOCATION_HREF_SINGLE", `location\.href\s*=\s*[']EFX[']`},
-		{"LOCATION_HREF_VAR", `location\.href\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// location.assign()
-		{"LOCATION_ASSIGN", `location\.assign\s*\(\s*["']EFX`},
-		{"LOCATION_ASSIGN_SINGLE", `location\.assign\s*\(\s*[']EFX`},
-		{"LOCATION_ASSIGN_VAR", `location\.assign\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// location.replace()
-		{"LOCATION_REPLACE", `location\.replace\s*\(\s*["']EFX`},
-		{"LOCATION_REPLACE_SINGLE", `location\.replace\s*\(\s*[']EFX`},
-		{"LOCATION_REPLACE_VAR", `location\.replace\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// window.location
-		{"WINDOW_LOCATION", `window\.location\s*=\s*["']EFX`},
-		{"WINDOW_LOCATION_SINGLE", `window\.location\s*=\s*[']EFX[']`},
-		{"WINDOW_LOCATION_VAR", `window\.location\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// window.location.href
-		{"WINDOW_HREF", `window\.location\.href\s*=\s*["']EFX`},
-		{"WINDOW_HREF_SINGLE", `window\.location\.href\s*=\s*[']EFX[']`},
-		{"WINDOW_HREF_VAR", `window\.location\.href\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// document.location
-		{"DOCUMENT_LOCATION", `document\.location\s*=\s*["']EFX`},
-		{"DOCUMENT_LOCATION_SINGLE", `document\.location\s*=\s*[']EFX[']`},
-		{"DOCUMENT_LOCATION_VAR", `document\.location\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// redirect()
-		{"REDIRECT", `redirect\s*\(\s*["']EFX`},
-		{"REDIRECT_SINGLE", `redirect\s*\(\s*[']EFX`},
-		{"REDIRECT_VAR", `redirect\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// window.navigate() (IE)
-		{"WINDOW_NAVIGATE", `window\.navigate\s*\(\s*["']EFX`},
-		{"WINDOW_NAVIGATE_SINGLE", `window\.navigate\s*\(\s*[']EFX`},
-		{"WINDOW_NAVIGATE_VAR", `window\.navigate\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// ========== MANIPULAÇÃO DOM (ALTO) ==========
-		// document.write()
-		{"DOCUMENT_WRITE", `document\.write\s*\(\s*["']EFX`},
-		{"DOCUMENT_WRITE_SINGLE", `document\.write\s*\(\s*[']EFX`},
-		{"DOCUMENT_WRITE_VAR", `document\.write\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// document.writeln()
-		{"DOCUMENT_WRITELN", `document\.writeln\s*\(\s*["']EFX`},
-		{"DOCUMENT_WRITELN_SINGLE", `document\.writeln\s*\(\s*[']EFX`},
-		{"DOCUMENT_WRITELN_VAR", `document\.writeln\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// innerHTML
-		{"INNERHTML", `innerHTML\s*=\s*["']EFX`},
-		{"INNERHTML_SINGLE", `innerHTML\s*=\s*[']EFX[']`},
-		{"INNERHTML_VAR", `innerHTML\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// outerHTML
-		{"OUTERHTML", `outerHTML\s*=\s*["']EFX`},
-		{"OUTERHTML_SINGLE", `outerHTML\s*=\s*[']EFX[']`},
-		{"OUTERHTML_VAR", `outerHTML\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// insertAdjacentHTML()
-		{"INSERT_ADJACENT", `insertAdjacentHTML\s*\(\s*["']EFX`},
-		{"INSERT_ADJACENT_SINGLE", `insertAdjacentHTML\s*\(\s*[']EFX[']`},
-		{"INSERT_ADJACENT_VAR", `insertAdjacentHTML\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// insertAdjacentText()
-		{"INSERT_ADJACENT_TEXT", `insertAdjacentText\s*\(\s*["']EFX`},
-		{"INSERT_ADJACENT_TEXT_SINGLE", `insertAdjacentText\s*\(\s*[']EFX[']`},
-		{"INSERT_ADJACENT_TEXT_VAR", `insertAdjacentText\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// ========== ATRIBUTOS PERIGOSOS (MÉDIO) ==========
-		// src
-		{"SRC", `\.src\s*=\s*["']EFX`},
-		{"SRC_SINGLE", `\.src\s*=\s*[']EFX[']`},
-		{"SRC_VAR", `\.src\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// href
-		{"HREF", `\.href\s*=\s*["']EFX`},
-		{"HREF_SINGLE", `\.href\s*=\s*[']EFX[']`},
-		{"HREF_VAR", `\.href\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// action
-		{"ACTION", `\.action\s*=\s*["']EFX`},
-		{"ACTION_SINGLE", `\.action\s*=\s*[']EFX[']`},
-		{"ACTION_VAR", `\.action\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// formaction
-		{"FORMACTION", `\.formaction\s*=\s*["']EFX`},
-		{"FORMACTION_SINGLE", `\.formaction\s*=\s*[']EFX[']`},
-		{"FORMACTION_VAR", `\.formaction\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// data
-		{"DATA", `\.data\s*=\s*["']EFX`},
-		{"DATA_SINGLE", `\.data\s*=\s*[']EFX[']`},
-		{"DATA_VAR", `\.data\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// value (em contexto específico)
-		{"VALUE", `\.value\s*=\s*["']EFX`},
-		{"VALUE_SINGLE", `\.value\s*=\s*[']EFX[']`},
-		{"VALUE_VAR", `\.value\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// ========== JQUERY (MÉDIO) ==========
-		// $().html()
-		{"JQUERY_HTML", `\$\([^)]*\)\.html\s*\(\s*["']EFX`},
-		{"JQUERY_HTML_SINGLE", `\$\([^)]*\)\.html\s*\(\s*[']EFX`},
-		{"JQUERY_HTML_VAR", `\$\([^)]*\)\.html\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// $().append()
-		{"JQUERY_APPEND", `\$\([^)]*\)\.append\s*\(\s*["']EFX`},
-		{"JQUERY_APPEND_SINGLE", `\$\([^)]*\)\.append\s*\(\s*[']EFX`},
-		{"JQUERY_APPEND_VAR", `\$\([^)]*\)\.append\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// $().prepend()
-		{"JQUERY_PREPEND", `\$\([^)]*\)\.prepend\s*\(\s*["']EFX`},
-		{"JQUERY_PREPEND_SINGLE", `\$\([^)]*\)\.prepend\s*\(\s*[']EFX`},
-		{"JQUERY_PREPEND_VAR", `\$\([^)]*\)\.prepend\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// $().after()
-		{"JQUERY_AFTER", `\$\([^)]*\)\.after\s*\(\s*["']EFX`},
-		{"JQUERY_AFTER_SINGLE", `\$\([^)]*\)\.after\s*\(\s*[']EFX`},
-		{"JQUERY_AFTER_VAR", `\$\([^)]*\)\.after\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// $().before()
-		{"JQUERY_BEFORE", `\$\([^)]*\)\.before\s*\(\s*["']EFX`},
-		{"JQUERY_BEFORE_SINGLE", `\$\([^)]*\)\.before\s*\(\s*[']EFX`},
-		{"JQUERY_BEFORE_VAR", `\$\([^)]*\)\.before\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// $().replaceWith()
-		{"JQUERY_REPLACE", `\$\([^)]*\)\.replaceWith\s*\(\s*["']EFX`},
-		{"JQUERY_REPLACE_SINGLE", `\$\([^)]*\)\.replaceWith\s*\(\s*[']EFX`},
-		{"JQUERY_REPLACE_VAR", `\$\([^)]*\)\.replaceWith\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// $().attr() perigoso
-		{"JQUERY_ATTR_SRC", `\.attr\s*\(\s*["']src["']\s*,\s*["']EFX`},
-		{"JQUERY_ATTR_HREF", `\.attr\s*\(\s*["']href["']\s*,\s*["']EFX`},
-		{"JQUERY_ATTR_VAR", `\.attr\s*\(\s*["'](?:src|href|action)["']\s*,\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// ========== OUTRAS FUNÇÕES PERIGOSAS ==========
-		// window.open()
-		{"WINDOW_OPEN", `window\.open\s*\(\s*["']EFX`},
-		{"WINDOW_OPEN_SINGLE", `window\.open\s*\(\s*[']EFX[']`},
-		{"WINDOW_OPEN_VAR", `window\.open\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// document.domain (em contexto)
-		{"DOCUMENT_DOMAIN", `document\.domain\s*=\s*["']EFX`},
-		{"DOCUMENT_DOMAIN_SINGLE", `document\.domain\s*=\s*[']EFX[']`},
-		{"DOCUMENT_DOMAIN_VAR", `document\.domain\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// postMessage() (em contexto)
-		{"POSTMESSAGE", `postMessage\s*\(\s*["']EFX`},
-		{"POSTMESSAGE_SINGLE", `postMessage\s*\(\s*[']EFX[']`},
-		{"POSTMESSAGE_VAR", `postMessage\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// importScripts() (Web Workers)
-		{"IMPORT_SCRIPTS", `importScripts\s*\(\s*["']EFX`},
-		{"IMPORT_SCRIPTS_SINGLE", `importScripts\s*\(\s*[']EFX`},
-		{"IMPORT_SCRIPTS_VAR", `importScripts\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// ========== FUNÇÕES DE SANITIZAÇÃO FRACA ==========
-		// dangerouslySetInnerHTML (React)
-		{"REACT_DANGEROUS", `dangerouslySetInnerHTML\s*:\s*\{\s*__html\s*:\s*["']EFX`},
-		{"REACT_DANGEROUS_SINGLE", `dangerouslySetInnerHTML\s*:\s*\{\s*__html\s*:\s*[']EFX[']`},
-		{"REACT_DANGEROUS_VAR", `dangerouslySetInnerHTML\s*:\s*\{\s*__html\s*:\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// v-html (Vue.js)
-		{"VUE_HTML", `v-html\s*=\s*["']EFX`},
-		{"VUE_HTML_SINGLE", `v-html\s*=\s*[']EFX[']`},
-		{"VUE_HTML_VAR", `v-html\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// ========== FUNÇÕES DE CODIFICAÇÃO/DECODIFICAÇÃO ==========
-		// decodeURI()
-		{"DECODEURI", `decodeURI\s*\(\s*["']EFX`},
-		{"DECODEURI_SINGLE", `decodeURI\s*\(\s*[']EFX`},
-		{"DECODEURI_VAR", `decodeURI\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// decodeURIComponent()
-		{"DECODEURICOMPONENT", `decodeURIComponent\s*\(\s*["']EFX`},
-		{"DECODEURICOMPONENT_SINGLE", `decodeURIComponent\s*\(\s*[']EFX`},
-		{"DECODEURICOMPONENT_VAR", `decodeURIComponent\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
-		
-		// ========== FUNÇÕES DE CONSTRUÇÃO DE URL ==========
-		// new URL()
-		{"NEW_URL", `new\s+URL\s*\(\s*["']EFX`},
-		{"NEW_URL_SINGLE", `new\s+URL\s*\(\s*[']EFX[']`},
-		{"NEW_URL_VAR", `new\s+URL\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
+// Scanner principal refeito
+type Scanner struct {
+	variables      map[string]string  // variável -> valor atribuído
+	dangerousCalls map[string][]string // função -> linhas perigosas
+}
+
+func NewScanner() *Scanner {
+	return &Scanner{
+		variables:      make(map[string]string),
+		dangerousCalls: make(map[string][]string),
 	}
 }
 
-// findVariablesWithEFX encontra variáveis que recebem "EFX" ou 'EFX'
-func findVariablesWithEFX(body string) map[string]string {
-	variables := make(map[string]string)
+// Analisa o corpo e retorna resultados
+func (s *Scanner) Analyze(body string) (bool, string) {
+	s.variables = make(map[string]string)
+	s.dangerousCalls = make(map[string][]string)
 	
+	// 1. Normalizar o body (remover espaços desnecessários)
+	normalized := normalizeSpaces(body)
+	
+	// 2. Encontrar todas as variáveis que recebem "EFX" (com aspas abertas)
+	s.findEFXVariables(normalized)
+	
+	// 3. Encontrar todos os usos perigosos de "EFX" diretamente
+	s.findDirectEFXUsage(normalized)
+	
+	// 4. Encontrar usos de variáveis que contém EFX em sinks perigosos
+	s.findVariableEFXUsage(normalized)
+	
+	// 5. Gerar resultados
+	return s.generateResults()
+}
+
+// Normaliza espaços para facilitar regex
+func normalizeSpaces(text string) string {
+	text = strings.ReplaceAll(text, "\n", " ")
+	text = strings.ReplaceAll(text, "\r", " ")
+	text = strings.ReplaceAll(text, "\t", " ")
+	
+	// Remover múltiplos espaços
+	for strings.Contains(text, "  ") {
+		text = strings.ReplaceAll(text, "  ", " ")
+	}
+	
+	return text
+}
+
+// Encontra variáveis que recebem EFX (com aspas abertas)
+func (s *Scanner) findEFXVariables(text string) {
+	// Padrões para atribuições com EFX
 	patterns := []struct {
-		name    string
-		pattern string
+		name string
+		re   string
 	}{
-		{"JSON_KEY", `["']([^"']+)["']\s*:\s*["']EFX["']`},
-		{"JSON_KEY_SINGLE", `["']([^"']+)["']\s*:\s*[']EFX[']`},
-		{"PHP_ARRAY", `["']([^"']+)["']\s*=>\s*["']EFX["']`},
-		{"VAR_DECL_DOUBLE", `(?:var|let|const)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*["']EFX["']`},
-		{"VAR_DECL_SINGLE", `(?:var|let|const)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*[']EFX[']`},
-		{"ASSIGN_DOUBLE", `([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*["']EFX["']`},
-		{"ASSIGN_SINGLE", `([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*[']EFX[']`},
-		{"PROP_DOUBLE", `([a-zA-Z_$][.a-zA-Z0-9_$]*)\s*=\s*["']EFX["']`},
-		{"PROP_SINGLE", `([a-zA-Z_$][.a-zA-Z0-9_$]*)\s*=\s*[']EFX[']`},
+		// Atribuição direta com aspas duplas (abertas)
+		{"VAR_DOUBLE", `(\b\w+\b)\s*=\s*"EFX`},
+		// Atribuição direta com aspas simples (abertas)
+		{"VAR_SINGLE", `(\b\w+\b)\s*=\s*'EFX`},
+		// var/let/const com aspas duplas
+		{"DECL_DOUBLE", `\b(var|let|const)\s+(\w+)\s*=\s*"EFX`},
+		// var/let/const com aspas simples
+		{"DECL_SINGLE", `\b(var|let|const)\s+(\w+)\s*=\s*'EFX`},
+		// Atribuição de propriedade
+		{"PROP_DOUBLE", `(\b\w+(?:\.\w+)*)\s*=\s*"EFX`},
+		// Objeto JSON/JS
+		{"JSON_DOUBLE", `"(\w+)"\s*:\s*"EFX`},
+		{"JSON_SINGLE", `'(\w+)'\s*:\s*'EFX`},
 	}
 	
 	for _, p := range patterns {
-		re := regexp.MustCompile(p.pattern)
-		matches := re.FindAllStringSubmatch(body, -1)
-		for _, match := range matches {
-			if len(match) > 1 {
-				varName := match[1]
-				fullMatch := cleanMatch(match[0])
-				variables[varName] = fmt.Sprintf("%s: %s", p.name, fullMatch)
-			}
-		}
-	}
-	
-	return variables
-}
-
-// scanForAllDangerousFunctions verifica EFX em todas as funções perigosas
-func scanForAllDangerousFunctions(body string) ([]string, map[string][]string) {
-	var directMatches []string
-	variableUsage := make(map[string][]string)
-	
-	// Primeiro, encontrar todas as variáveis que recebem EFX
-	variables := findVariablesWithEFX(body)
-	
-	// Para cada função perigosa
-	for _, funcDef := range getAllDangerousFunctions() {
-		re := regexp.MustCompile(funcDef.pattern)
+		re := regexp.MustCompile(p.re)
+		matches := re.FindAllStringSubmatch(text, -1)
 		
-		// Procurar matches diretos com EFX
-		matches := re.FindAllStringSubmatch(body, -1)
 		for _, match := range matches {
-			if len(match) > 0 {
-				fullMatch := cleanMatch(match[0])
+			if len(match) >= 2 {
+				varName := ""
+				value := match[0]
 				
-				// Verificar se é match direto com EFX ou variável
-				if strings.Contains(funcDef.pattern, `["']EFX["']`) || 
-				   strings.Contains(funcDef.pattern, `[']EFX[']`) {
-					// É match direto com EFX
-					directMatches = append(directMatches, fmt.Sprintf("%s: %s", funcDef.name, fullMatch))
-				} else if strings.Contains(funcDef.pattern, `[a-zA-Z_$][a-zA-Z0-9_$]*\)`) && len(match) > 1 {
-					// É match com variável
-					varName := match[1]
-					
-					// Verificar se esta variável recebeu EFX
-					if _, exists := variables[varName]; exists {
-						usage := fmt.Sprintf("%s: %s", funcDef.name, fullMatch)
-						key := fmt.Sprintf("%s->%s", varName, funcDef.name)
-						if _, exists := variableUsage[key]; !exists {
-							variableUsage[key] = []string{usage}
-						}
+				if p.name == "DECL_DOUBLE" || p.name == "DECL_SINGLE" {
+					if len(match) >= 3 {
+						varName = match[2] // o nome da variável é o terceiro grupo
 					}
+				} else {
+					varName = match[1] // o nome da variável é o segundo grupo
+				}
+				
+				if varName != "" {
+					s.variables[varName] = cleanMatch(value)
 				}
 			}
 		}
 	}
-	
-	return directMatches, variableUsage
 }
 
-// analyzeReflection analisa todas as reflexões
-func analyzeReflection(body string) (bool, string) {
-	// 1. Verificar funções perigosas com EFX direto ou variáveis
-	directMatches, variableUsage := scanForAllDangerousFunctions(body)
+// Encontra usos diretos de EFX em funções perigosas
+func (s *Scanner) findDirectEFXUsage(text string) {
+	sinks := []struct {
+		name string
+		re   string
+	}{
+		// Execução de código
+		{"eval", `eval\s*\(\s*"EFX`},
+		{"Function", `new\s+Function\s*\(\s*"EFX`},
+		{"setTimeout", `setTimeout\s*\(\s*"EFX`},
+		{"setInterval", `setInterval\s*\(\s*"EFX`},
+		
+		// Redirecionamento
+		{"location", `location\s*=\s*"EFX`},
+		{"location.href", `location\.href\s*=\s*"EFX`},
+		{"location.assign", `location\.assign\s*\(\s*"EFX`},
+		{"location.replace", `location\.replace\s*\(\s*"EFX`},
+		
+		// Window redirection
+		{"window.location", `window\.location\s*=\s*"EFX`},
+		{"window.location.href", `window\.location\.href\s*=\s*"EFX`},
+		{"window.navigate", `window\.navigate\s*\(\s*"EFX`},
+		
+		// DOM manipulation
+		{"document.write", `document\.write\s*\(\s*"EFX`},
+		{"document.writeln", `document\.writeln\s*\(\s*"EFX`},
+		{"innerHTML", `innerHTML\s*=\s*"EFX`},
+		{"outerHTML", `outerHTML\s*=\s*"EFX`},
+		
+		// Attributes
+		{".src", `\.src\s*=\s*"EFX`},
+		{".href", `\.href\s*=\s*"EFX`},
+		{".action", `\.action\s*=\s*"EFX`},
+		{".data", `\.data\s*=\s*"EFX`},
+		
+		// jQuery
+		{"$.html", `\$\([^)]*\)\.html\s*\(\s*"EFX`},
+		{"$.append", `\$\([^)]*\)\.append\s*\(\s*"EFX`},
+		{"$.prepend", `\$\([^)]*\)\.prepend\s*\(\s*"EFX`},
+		
+		// React/Vue
+		{"dangerouslySetInnerHTML", `dangerouslySetInnerHTML\s*:\s*\{[^}]*__html\s*:\s*"EFX`},
+		{"v-html", `v-html\s*=\s*"EFX`},
+		
+		// Casos especiais (exemplo: "EFX")?window.location.href="EFX":)
+		{"conditional_redirect", `"EFX"[^;]*window\.location\.href\s*=\s*"EFX`},
+		{"func_param_redirect", `\w+\s*\(\s*"EFX[^)]*\)[^;]*window\.location\.href\s*=`},
+	}
 	
+	for _, sink := range sinks {
+		re := regexp.MustCompile(sink.re)
+		matches := re.FindAllString(text, -1)
+		
+		for _, match := range matches {
+			s.dangerousCalls[sink.name] = append(s.dangerousCalls[sink.name], cleanMatch(match))
+		}
+	}
+}
+
+// Encontra usos de variáveis que contém EFX em sinks perigosos
+func (s *Scanner) findVariableEFXUsage(text string) {
+	// Padrões para sinks que usam variáveis
+	sinkPatterns := []struct {
+		name string
+		re   string
+	}{
+		// Execução de código com variável
+		{"eval_var", `eval\s*\(\s*(\w+)\s*\)`},
+		{"Function_var", `new\s+Function\s*\(\s*(\w+)\s*\)`},
+		{"setTimeout_var", `setTimeout\s*\(\s*(\w+)\s*[,)]`},
+		
+		// Redirecionamento com variável
+		{"location_var", `location\s*=\s*(\w+)`},
+		{"location.href_var", `location\.href\s*=\s*(\w+)`},
+		{"window.location_var", `window\.location\s*=\s*(\w+)`},
+		{"window.location.href_var", `window\.location\.href\s*=\s*(\w+)`},
+		
+		// DOM com variável
+		{"innerHTML_var", `innerHTML\s*=\s*(\w+)`},
+		{"document.write_var", `document\.write\s*\(\s*(\w+)\s*\)`},
+		
+		// Atributos com variável
+		{".src_var", `\.src\s*=\s*(\w+)`},
+		{".href_var", `\.href\s*=\s*(\w+)`},
+	}
+	
+	for _, sink := range sinkPatterns {
+		re := regexp.MustCompile(sink.re)
+		matches := re.FindAllStringSubmatch(text, -1)
+		
+		for _, match := range matches {
+			if len(match) >= 2 {
+				varName := match[1]
+				
+				// Verificar se esta variável contém EFX
+				if _, hasEFX := s.variables[varName]; hasEFX {
+					s.dangerousCalls[sink.name+"_via_"+varName] = append(
+						s.dangerousCalls[sink.name+"_via_"+varName],
+						fmt.Sprintf("%s: %s -> %s", sink.name, varName, cleanMatch(match[0])),
+					)
+				}
+			}
+		}
+	}
+}
+
+// Gera os resultados
+func (s *Scanner) generateResults() (bool, string) {
 	var findings []string
 	
-	// Adicionar matches diretos
-	if len(directMatches) > 0 {
-		findings = append(findings, "DIRECT: "+strings.Join(directMatches[:min(3, len(directMatches))], " | "))
+	// 1. Direto EFX em sinks
+	for sink, matches := range s.dangerousCalls {
+		// Filtrar apenas as que começam com sink "puro" (não _via_)
+		if !strings.Contains(sink, "_via_") && len(matches) > 0 {
+			findings = append(findings, fmt.Sprintf("%s: %s", sink, strings.Join(matches[:min(2, len(matches))], " | ")))
+		}
 	}
 	
-	// Adicionar usos de variáveis
-	if len(variableUsage) > 0 {
-		var flows []string
-		for key, usages := range variableUsage {
-			if len(usages) > 0 {
-				// Extrair nome da variável da chave
-				parts := strings.Split(key, "->")
-				if len(parts) == 2 {
-					varName := parts[0]
-					funcName := parts[1]
-					
-					// Buscar como a variável recebeu EFX
-					variables := findVariablesWithEFX(body)
-					if assignment, exists := variables[varName]; exists {
-						flow := fmt.Sprintf("%s -> %s: %s", assignment, funcName, strings.Join(usages, ", "))
-						flows = append(flows, flow)
-					}
-				}
-			}
-		}
-		
-		if len(flows) > 0 {
-			findings = append(findings, "FLOW: "+strings.Join(flows[:min(3, len(flows))], " || "))
+	// 2. Fluxos de variáveis (variável → sink)
+	for sink, matches := range s.dangerousCalls {
+		if strings.Contains(sink, "_via_") && len(matches) > 0 {
+			findings = append(findings, fmt.Sprintf("FLOW: %s", strings.Join(matches[:min(2, len(matches))], " | ")))
 		}
 	}
+	
+	// 3. Variáveis detectadas (para debug, se quiser)
+	/*
+	if len(s.variables) > 0 && !onlyPOC {
+		var varList []string
+		for varName, value := range s.variables {
+			varList = append(varList, fmt.Sprintf("%s=%s", varName, value))
+		}
+		findings = append(findings, fmt.Sprintf("VARS: %s", strings.Join(varList, ", ")))
+	}
+	*/
 	
 	if len(findings) > 0 {
 		return true, strings.Join(findings, " || ")
@@ -522,19 +403,14 @@ func analyzeReflection(body string) (bool, string) {
 }
 
 func cleanMatch(match string) string {
-	match = strings.ReplaceAll(match, "\n", " ")
-	match = strings.ReplaceAll(match, "\r", " ")
-	match = strings.ReplaceAll(match, "\t", " ")
+	match = strings.TrimSpace(match)
 	
-	for strings.Contains(match, "  ") {
-		match = strings.ReplaceAll(match, "  ", " ")
-	}
-	
+	// Limitar tamanho
 	if len(match) > 70 {
 		match = match[:67] + "..."
 	}
 	
-	return strings.TrimSpace(match)
+	return match
 }
 
 func min(a, b int) int {
@@ -542,6 +418,12 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// analyzeReflection - wrapper para compatibilidade
+func analyzeReflection(body string) (bool, string) {
+	scanner := NewScanner()
+	return scanner.Analyze(body)
 }
 
 func testTarget(base string, methodMode string) string {

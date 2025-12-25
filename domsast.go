@@ -164,236 +164,326 @@ func getRandomParams(params []string, count int) []string {
 	return r[:count]
 }
 
-// Scanner principal refeito
-type Scanner struct {
-	variables      map[string]string  // variável -> valor atribuído
-	dangerousCalls map[string][]string // função -> linhas perigosas
+// ==================== NOVO ALGORITMO DE DETECÇÃO ====================
+
+type DetectionResult struct {
+	DirectMatches []string            // EFX direto em funções perigosas
+	VariableFlows map[string][]string // Fluxos: variável -> usos perigosos
+	Variables     map[string]string   // Variáveis que contém EFX
 }
 
-func NewScanner() *Scanner {
-	return &Scanner{
-		variables:      make(map[string]string),
-		dangerousCalls: make(map[string][]string),
+func NewDetectionResult() *DetectionResult {
+	return &DetectionResult{
+		DirectMatches: make([]string, 0),
+		VariableFlows: make(map[string][]string),
+		Variables:     make(map[string]string),
 	}
 }
 
-// Analisa o corpo e retorna resultados
-func (s *Scanner) Analyze(body string) (bool, string) {
-	s.variables = make(map[string]string)
-	s.dangerousCalls = make(map[string][]string)
+func analyzeReflection(body string) (bool, string) {
+	result := NewDetectionResult()
+	lines := strings.Split(body, "\n")
 	
-	// 1. Normalizar o body (remover espaços desnecessários)
-	normalized := normalizeSpaces(body)
+	// FASE 1: Coletar todas as variáveis que recebem EFX
+	collectEFXVariables(lines, result)
 	
-	// 2. Encontrar todas as variáveis que recebem "EFX" (com aspas abertas)
-	s.findEFXVariables(normalized)
+	// FASE 2: Buscar EFX direto em sinks perigosos
+	findDirectEFXInSinks(lines, result)
 	
-	// 3. Encontrar todos os usos perigosos de "EFX" diretamente
-	s.findDirectEFXUsage(normalized)
+	// FASE 3: Buscar usos de variáveis EFX em sinks perigosos
+	findVariableUsageInSinks(lines, result)
 	
-	// 4. Encontrar usos de variáveis que contém EFX em sinks perigosos
-	s.findVariableEFXUsage(normalized)
-	
-	// 5. Gerar resultados
-	return s.generateResults()
+	// FASE 4: Gerar resultado
+	return generateResult(result)
 }
 
-// Normaliza espaços para facilitar regex
-func normalizeSpaces(text string) string {
-	text = strings.ReplaceAll(text, "\n", " ")
-	text = strings.ReplaceAll(text, "\r", " ")
-	text = strings.ReplaceAll(text, "\t", " ")
-	
-	// Remover múltiplos espaços
-	for strings.Contains(text, "  ") {
-		text = strings.ReplaceAll(text, "  ", " ")
-	}
-	
-	return text
-}
-
-// Encontra variáveis que recebem EFX (com aspas abertas)
-func (s *Scanner) findEFXVariables(text string) {
-	// Padrões para atribuições com EFX
-	patterns := []struct {
-		name string
-		re   string
-	}{
-		// Atribuição direta com aspas duplas (abertas)
-		{"VAR_DOUBLE", `(\b\w+\b)\s*=\s*"EFX`},
-		// Atribuição direta com aspas simples (abertas)
-		{"VAR_SINGLE", `(\b\w+\b)\s*=\s*'EFX`},
-		// var/let/const com aspas duplas
-		{"DECL_DOUBLE", `\b(var|let|const)\s+(\w+)\s*=\s*"EFX`},
-		// var/let/const com aspas simples
-		{"DECL_SINGLE", `\b(var|let|const)\s+(\w+)\s*=\s*'EFX`},
-		// Atribuição de propriedade
-		{"PROP_DOUBLE", `(\b\w+(?:\.\w+)*)\s*=\s*"EFX`},
-		// Objeto JSON/JS
-		{"JSON_DOUBLE", `"(\w+)"\s*:\s*"EFX`},
-		{"JSON_SINGLE", `'(\w+)'\s*:\s*'EFX`},
-	}
-	
-	for _, p := range patterns {
-		re := regexp.MustCompile(p.re)
-		matches := re.FindAllStringSubmatch(text, -1)
+// FASE 1: Coletar variáveis com EFX
+func collectEFXVariables(lines []string, result *DetectionResult) {
+	for i, line := range lines {
+		line = normalizeLine(line)
+		if line == "" {
+			continue
+		}
 		
-		for _, match := range matches {
-			if len(match) >= 2 {
-				varName := ""
-				value := match[0]
-				
-				if p.name == "DECL_DOUBLE" || p.name == "DECL_SINGLE" {
-					if len(match) >= 3 {
-						varName = match[2] // o nome da variável é o terceiro grupo
+		// Padrões para atribuição de EFX a variáveis
+		patterns := []struct {
+			name string
+			re   *regexp.Regexp
+		}{
+			// Atribuição direta com aspas duplas
+			{"ASSIGN_DOUBLE", regexp.MustCompile(`([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*"EFX`)},
+			// Atribuição direta com aspas simples
+			{"ASSIGN_SINGLE", regexp.MustCompile(`([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*'EFX`)},
+			// var/let/const com aspas duplas
+			{"DECL_DOUBLE", regexp.MustCompile(`\b(var|let|const)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*"EFX`)},
+			// var/let/const com aspas simples
+			{"DECL_SINGLE", regexp.MustCompile(`\b(var|let|const)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*'EFX`)},
+			// Atribuição de propriedade
+			{"PROP_DOUBLE", regexp.MustCompile(`([a-zA-Z_$][a-zA-Z0-9_$]*(?:\.[a-zA-Z_$][a-zA-Z0-9_$]*)*)\s*=\s*"EFX`)},
+			// JSON/objeto
+			{"JSON_DOUBLE", regexp.MustCompile(`"([^"]+)"\s*:\s*"EFX`)},
+			{"JSON_SINGLE", regexp.MustCompile(`'([^']+)'\s*:\s*'EFX`)},
+			// PHP array
+			{"PHP_ARRAY", regexp.MustCompile(`"([^"]+)"\s*=>\s*"EFX`)},
+		}
+		
+		for _, p := range patterns {
+			matches := p.re.FindAllStringSubmatch(line, -1)
+			for _, match := range matches {
+				if len(match) > 1 {
+					varName := ""
+					
+					if p.name == "DECL_DOUBLE" || p.name == "DECL_SINGLE" {
+						if len(match) > 2 {
+							varName = match[2]
+						}
+					} else {
+						varName = match[1]
 					}
-				} else {
-					varName = match[1] // o nome da variável é o segundo grupo
-				}
-				
-				if varName != "" {
-					s.variables[varName] = cleanMatch(value)
-				}
-			}
-		}
-	}
-}
-
-// Encontra usos diretos de EFX em funções perigosas
-func (s *Scanner) findDirectEFXUsage(text string) {
-	sinks := []struct {
-		name string
-		re   string
-	}{
-		// Execução de código
-		{"eval", `eval\s*\(\s*"EFX`},
-		{"Function", `new\s+Function\s*\(\s*"EFX`},
-		{"setTimeout", `setTimeout\s*\(\s*"EFX`},
-		{"setInterval", `setInterval\s*\(\s*"EFX`},
-		
-		// Redirecionamento
-		{"location", `location\s*=\s*"EFX`},
-		{"location.href", `location\.href\s*=\s*"EFX`},
-		{"location.assign", `location\.assign\s*\(\s*"EFX`},
-		{"location.replace", `location\.replace\s*\(\s*"EFX`},
-		
-		// Window redirection
-		{"window.location", `window\.location\s*=\s*"EFX`},
-		{"window.location.href", `window\.location\.href\s*=\s*"EFX`},
-		{"window.navigate", `window\.navigate\s*\(\s*"EFX`},
-		
-		// DOM manipulation
-		{"document.write", `document\.write\s*\(\s*"EFX`},
-		{"document.writeln", `document\.writeln\s*\(\s*"EFX`},
-		{"innerHTML", `innerHTML\s*=\s*"EFX`},
-		{"outerHTML", `outerHTML\s*=\s*"EFX`},
-		
-		// Attributes
-		{".src", `\.src\s*=\s*"EFX`},
-		{".href", `\.href\s*=\s*"EFX`},
-		{".action", `\.action\s*=\s*"EFX`},
-		{".data", `\.data\s*=\s*"EFX`},
-		
-		// jQuery
-		{"$.html", `\$\([^)]*\)\.html\s*\(\s*"EFX`},
-		{"$.append", `\$\([^)]*\)\.append\s*\(\s*"EFX`},
-		{"$.prepend", `\$\([^)]*\)\.prepend\s*\(\s*"EFX`},
-		
-		// React/Vue
-		{"dangerouslySetInnerHTML", `dangerouslySetInnerHTML\s*:\s*\{[^}]*__html\s*:\s*"EFX`},
-		{"v-html", `v-html\s*=\s*"EFX`},
-		
-		// Casos especiais (exemplo: "EFX")?window.location.href="EFX":)
-		{"conditional_redirect", `"EFX"[^;]*window\.location\.href\s*=\s*"EFX`},
-		{"func_param_redirect", `\w+\s*\(\s*"EFX[^)]*\)[^;]*window\.location\.href\s*=`},
-	}
-	
-	for _, sink := range sinks {
-		re := regexp.MustCompile(sink.re)
-		matches := re.FindAllString(text, -1)
-		
-		for _, match := range matches {
-			s.dangerousCalls[sink.name] = append(s.dangerousCalls[sink.name], cleanMatch(match))
-		}
-	}
-}
-
-// Encontra usos de variáveis que contém EFX em sinks perigosos
-func (s *Scanner) findVariableEFXUsage(text string) {
-	// Padrões para sinks que usam variáveis
-	sinkPatterns := []struct {
-		name string
-		re   string
-	}{
-		// Execução de código com variável
-		{"eval_var", `eval\s*\(\s*(\w+)\s*\)`},
-		{"Function_var", `new\s+Function\s*\(\s*(\w+)\s*\)`},
-		{"setTimeout_var", `setTimeout\s*\(\s*(\w+)\s*[,)]`},
-		
-		// Redirecionamento com variável
-		{"location_var", `location\s*=\s*(\w+)`},
-		{"location.href_var", `location\.href\s*=\s*(\w+)`},
-		{"window.location_var", `window\.location\s*=\s*(\w+)`},
-		{"window.location.href_var", `window\.location\.href\s*=\s*(\w+)`},
-		
-		// DOM com variável
-		{"innerHTML_var", `innerHTML\s*=\s*(\w+)`},
-		{"document.write_var", `document\.write\s*\(\s*(\w+)\s*\)`},
-		
-		// Atributos com variável
-		{".src_var", `\.src\s*=\s*(\w+)`},
-		{".href_var", `\.href\s*=\s*(\w+)`},
-	}
-	
-	for _, sink := range sinkPatterns {
-		re := regexp.MustCompile(sink.re)
-		matches := re.FindAllStringSubmatch(text, -1)
-		
-		for _, match := range matches {
-			if len(match) >= 2 {
-				varName := match[1]
-				
-				// Verificar se esta variável contém EFX
-				if _, hasEFX := s.variables[varName]; hasEFX {
-					s.dangerousCalls[sink.name+"_via_"+varName] = append(
-						s.dangerousCalls[sink.name+"_via_"+varName],
-						fmt.Sprintf("%s: %s -> %s", sink.name, varName, cleanMatch(match[0])),
-					)
+					
+					if varName != "" {
+						context := fmt.Sprintf("L%d: %s", i+1, truncate(line, 50))
+						result.Variables[varName] = context
+					}
 				}
 			}
 		}
 	}
 }
 
-// Gera os resultados
-func (s *Scanner) generateResults() (bool, string) {
+// FASE 2: Buscar EFX direto em sinks
+func findDirectEFXInSinks(lines []string, result *DetectionResult) {
+	sinkDefinitions := getSinkDefinitions()
+	
+	for i, line := range lines {
+		line = normalizeLine(line)
+		if line == "" {
+			continue
+		}
+		
+		for _, sink := range sinkDefinitions {
+			// Verificar EFX direto
+			if sink.directPattern != nil {
+				matches := sink.directPattern.FindAllString(line, -1)
+				for _, match := range matches {
+					context := fmt.Sprintf("L%d: %s (%s)", i+1, truncate(match, 60), sink.name)
+					result.DirectMatches = append(result.DirectMatches, context)
+				}
+			}
+		}
+	}
+}
+
+// FASE 3: Buscar usos de variáveis EFX em sinks
+func findVariableUsageInSinks(lines []string, result *DetectionResult) {
+	sinkDefinitions := getSinkDefinitions()
+	
+	for i, line := range lines {
+		line = normalizeLine(line)
+		if line == "" {
+			continue
+		}
+		
+		for _, sink := range sinkDefinitions {
+			if sink.variablePattern != nil {
+				matches := sink.variablePattern.FindAllStringSubmatch(line, -1)
+				for _, match := range matches {
+					if len(match) > 1 {
+						varName := match[1]
+						
+						// Verificar se esta variável contém EFX
+						if _, hasEFX := result.Variables[varName]; hasEFX {
+							context := fmt.Sprintf("L%d: %s", i+1, truncate(match[0], 60))
+							
+							// Registrar o fluxo: variável -> sink
+							flow := fmt.Sprintf("%s -> %s: %s", varName, sink.name, context)
+							result.VariableFlows[varName] = append(result.VariableFlows[varName], flow)
+						}
+					}
+				}
+			}
+		}
+		
+		// Buscar padrões especiais
+		findSpecialPatterns(line, i, result)
+	}
+}
+
+// Definir todos os sinks perigosos
+type SinkDefinition struct {
+	name           string
+	directPattern  *regexp.Regexp  // Para EFX direto
+	variablePattern *regexp.Regexp // Para variáveis
+}
+
+func getSinkDefinitions() []SinkDefinition {
+	// Padrão para nomes de variáveis (inclui $ e propriedades)
+	varPattern := `([a-zA-Z_$][a-zA-Z0-9_$]*(?:\.[a-zA-Z_$][a-zA-Z0-9_$]*)*)`
+	
+	return []SinkDefinition{
+		// ========== EXECUÇÃO DE CÓDIGO ==========
+		{
+			name:           "eval",
+			directPattern:  regexp.MustCompile(`eval\s*\(\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`eval\s*\(\s*(%s)\s*\)`, varPattern)),
+		},
+		{
+			name:           "Function",
+			directPattern:  regexp.MustCompile(`new\s+Function\s*\(\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`new\s+Function\s*\(\s*(%s)\s*\)`, varPattern)),
+		},
+		{
+			name:           "setTimeout",
+			directPattern:  regexp.MustCompile(`setTimeout\s*\(\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`setTimeout\s*\(\s*(%s)\s*[,)]`, varPattern)),
+		},
+		{
+			name:           "setInterval",
+			directPattern:  regexp.MustCompile(`setInterval\s*\(\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`setInterval\s*\(\s*(%s)\s*[,)]`, varPattern)),
+		},
+		
+		// ========== REDIRECIONAMENTO ==========
+		{
+			name:           "location.href",
+			directPattern:  regexp.MustCompile(`location\.href\s*=\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`location\.href\s*=\s*(%s)`, varPattern)),
+		},
+		{
+			name:           "window.location.href",
+			directPattern:  regexp.MustCompile(`window\.location\.href\s*=\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`window\.location\.href\s*=\s*(%s)`, varPattern)),
+		},
+		{
+			name:           "window.location",
+			directPattern:  regexp.MustCompile(`window\.location\s*=\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`window\.location\s*=\s*(%s)`, varPattern)),
+		},
+		{
+			name:           "location",
+			directPattern:  regexp.MustCompile(`location\s*=\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`location\s*=\s*(%s)`, varPattern)),
+		},
+		{
+			name:           "location.assign",
+			directPattern:  regexp.MustCompile(`location\.assign\s*\(\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`location\.assign\s*\(\s*(%s)\s*\)`, varPattern)),
+		},
+		{
+			name:           "location.replace",
+			directPattern:  regexp.MustCompile(`location\.replace\s*\(\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`location\.replace\s*\(\s*(%s)\s*\)`, varPattern)),
+		},
+		
+		// ========== DOM MANIPULATION ==========
+		{
+			name:           "innerHTML",
+			directPattern:  regexp.MustCompile(`innerHTML\s*=\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`innerHTML\s*=\s*(%s)`, varPattern)),
+		},
+		{
+			name:           "outerHTML",
+			directPattern:  regexp.MustCompile(`outerHTML\s*=\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`outerHTML\s*=\s*(%s)`, varPattern)),
+		},
+		{
+			name:           "document.write",
+			directPattern:  regexp.MustCompile(`document\.write\s*\(\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`document\.write\s*\(\s*(%s)\s*\)`, varPattern)),
+		},
+		{
+			name:           "document.writeln",
+			directPattern:  regexp.MustCompile(`document\.writeln\s*\(\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`document\.writeln\s*\(\s*(%s)\s*\)`, varPattern)),
+		},
+		
+		// ========== ATRIBUTOS ==========
+		{
+			name:           ".src",
+			directPattern:  regexp.MustCompile(`\.src\s*=\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`\.src\s*=\s*(%s)`, varPattern)),
+		},
+		{
+			name:           ".href",
+			directPattern:  regexp.MustCompile(`\.href\s*=\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`\.href\s*=\s*(%s)`, varPattern)),
+		},
+		{
+			name:           ".action",
+			directPattern:  regexp.MustCompile(`\.action\s*=\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`\.action\s*=\s*(%s)`, varPattern)),
+		},
+		
+		// ========== JQUERY ==========
+		{
+			name:           "$().html",
+			directPattern:  regexp.MustCompile(`\$\([^)]*\)\.html\s*\(\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`\$\([^)]*\)\.html\s*\(\s*(%s)\s*\)`, varPattern)),
+		},
+		{
+			name:           "$().append",
+			directPattern:  regexp.MustCompile(`\$\([^)]*\)\.append\s*\(\s*"EFX`),
+			variablePattern: regexp.MustCompile(fmt.Sprintf(`\$\([^)]*\)\.append\s*\(\s*(%s)\s*\)`, varPattern)),
+		},
+	}
+}
+
+// Buscar padrões especiais (como o seu exemplo)
+func findSpecialPatterns(line string, lineNum int, result *DetectionResult) {
+	specialPatterns := []struct {
+		name string
+		re   *regexp.Regexp
+	}{
+		// Seu exemplo: ;handleAndCheckURLRedirect("EFX")?window.location.href="EFX":
+		{"func_redirect", regexp.MustCompile(`[;]?\w+\s*\(\s*"EFX[^)]*\)\s*[?:]\s*window\.location\.href\s*=\s*"EFX`)},
+		
+		// Condicional com redirect
+		{"cond_redirect", regexp.MustCompile(`"EFX"[^;]*\?[^:]*:\s*window\.location\.href\s*=`)},
+		
+		// EFX em parâmetro de função que leva a redirect
+		{"param_redirect", regexp.MustCompile(`\w+\s*\(\s*"EFX[^)]*\)[^;]*\.(?:location|href|src)\s*=`)},
+		
+		// EFX concatenado em string
+		{"concat_redirect", regexp.MustCompile(`"EFX[^"]*"\s*\+\s*\w+[^;]*\.href\s*=`)},
+	}
+	
+	for _, sp := range specialPatterns {
+		matches := sp.re.FindAllString(line, -1)
+		for _, match := range matches {
+			context := fmt.Sprintf("L%d: %s (%s)", lineNum+1, truncate(match, 60), sp.name)
+			result.DirectMatches = append(result.DirectMatches, context)
+		}
+	}
+}
+
+// FASE 4: Gerar resultado final
+func generateResult(result *DetectionResult) (bool, string) {
 	var findings []string
 	
-	// 1. Direto EFX em sinks
-	for sink, matches := range s.dangerousCalls {
-		// Filtrar apenas as que começam com sink "puro" (não _via_)
-		if !strings.Contains(sink, "_via_") && len(matches) > 0 {
-			findings = append(findings, fmt.Sprintf("%s: %s", sink, strings.Join(matches[:min(2, len(matches))], " | ")))
+	// 1. Matches diretos
+	if len(result.DirectMatches) > 0 {
+		findings = append(findings, "DIRECT: "+strings.Join(result.DirectMatches[:min(3, len(result.DirectMatches))], " | "))
+	}
+	
+	// 2. Fluxos de variáveis
+	for varName, flows := range result.VariableFlows {
+		if len(flows) > 0 {
+			varContext := result.Variables[varName]
+			flowSummary := fmt.Sprintf("%s [%s] -> %s", varName, varContext, strings.Join(flows[:min(2, len(flows))], " | "))
+			findings = append(findings, "FLOW: "+flowSummary)
 		}
 	}
 	
-	// 2. Fluxos de variáveis (variável → sink)
-	for sink, matches := range s.dangerousCalls {
-		if strings.Contains(sink, "_via_") && len(matches) > 0 {
-			findings = append(findings, fmt.Sprintf("FLOW: %s", strings.Join(matches[:min(2, len(matches))], " | ")))
-		}
-	}
-	
-	// 3. Variáveis detectadas (para debug, se quiser)
-	/*
-	if len(s.variables) > 0 && !onlyPOC {
+	// 3. Apenas variáveis detectadas (para debug)
+	if len(result.Variables) > 0 && len(findings) == 0 && !onlyPOC {
 		var varList []string
-		for varName, value := range s.variables {
-			varList = append(varList, fmt.Sprintf("%s=%s", varName, value))
+		for varName, context := range result.Variables {
+			varList = append(varList, fmt.Sprintf("%s(%s)", varName, context))
 		}
-		findings = append(findings, fmt.Sprintf("VARS: %s", strings.Join(varList, ", ")))
+		if len(varList) > 0 {
+			findings = append(findings, "VARS: "+strings.Join(varList[:min(3, len(varList))], ", "))
+		}
 	}
-	*/
 	
 	if len(findings) > 0 {
 		return true, strings.Join(findings, " || ")
@@ -402,15 +492,25 @@ func (s *Scanner) generateResults() (bool, string) {
 	return false, ""
 }
 
-func cleanMatch(match string) string {
-	match = strings.TrimSpace(match)
+// Funções utilitárias
+func normalizeLine(line string) string {
+	line = strings.TrimSpace(line)
+	line = strings.ReplaceAll(line, "\t", " ")
+	line = strings.ReplaceAll(line, "\r", "")
 	
-	// Limitar tamanho
-	if len(match) > 70 {
-		match = match[:67] + "..."
+	// Remover múltiplos espaços
+	for strings.Contains(line, "  ") {
+		line = strings.ReplaceAll(line, "  ", " ")
 	}
 	
-	return match
+	return line
+}
+
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
 
 func min(a, b int) int {
@@ -420,11 +520,7 @@ func min(a, b int) int {
 	return b
 }
 
-// analyzeReflection - wrapper para compatibilidade
-func analyzeReflection(body string) (bool, string) {
-	scanner := NewScanner()
-	return scanner.Analyze(body)
-}
+// ==================== FIM DO NOVO ALGORITMO ====================
 
 func testTarget(base string, methodMode string) string {
 	selectedParams := getRandomParams(paramList, paramCount)

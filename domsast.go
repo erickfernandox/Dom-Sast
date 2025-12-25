@@ -175,225 +175,225 @@ func getAllDangerousFunctions() []struct {
 	}{
 		// ========== EXECUÇÃO DE CÓDIGO (CRÍTICO) ==========
 		// eval()
-		{"EVAL", `eval\s*\(\s*["']EFX["']\)`},
-		{"EVAL_SINGLE", `eval\s*\(\s*[']EFX[']\)`},
-		{"EVAL_VAR", `eval\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\)`},
+		{"EVAL", `eval\s*\(\s*["']EFX`},
+		{"EVAL_SINGLE", `eval\s*\(\s*[']EFX`},
+		{"EVAL_VAR", `eval\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// Function()
-		{"FUNCTION", `new\s+Function\s*\(\s*["']EFX["']\)`},
-		{"FUNCTION_SINGLE", `new\s+Function\s*\(\s*[']EFX[']\)`},
-		{"FUNCTION_VAR", `new\s+Function\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\)`},
+		{"FUNCTION", `new\s+Function\s*\(\s*["']EFX`},
+		{"FUNCTION_SINGLE", `new\s+Function\s*\(\s*[']EFX`},
+		{"FUNCTION_VAR", `new\s+Function\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// setTimeout()
-		{"SETTIMEOUT", `setTimeout\s*\(\s*["']EFX["']`},
+		{"SETTIMEOUT", `setTimeout\s*\(\s*["']EFX`},
 		{"SETTIMEOUT_SINGLE", `setTimeout\s*\(\s*[']EFX[']`},
 		{"SETTIMEOUT_VAR", `setTimeout\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// setInterval()
-		{"SETINTERVAL", `setInterval\s*\(\s*["']EFX["']`},
+		{"SETINTERVAL", `setInterval\s*\(\s*["']EFX`},
 		{"SETINTERVAL_SINGLE", `setInterval\s*\(\s*[']EFX[']`},
 		{"SETINTERVAL_VAR", `setInterval\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// setImmediate()
-		{"SETIMMEDIATE", `setImmediate\s*\(\s*["']EFX["']`},
+		{"SETIMMEDIATE", `setImmediate\s*\(\s*["']EFX`},
 		{"SETIMMEDIATE_SINGLE", `setImmediate\s*\(\s*[']EFX[']`},
 		{"SETIMMEDIATE_VAR", `setImmediate\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// execScript() (IE)
-		{"EXECSCRIPT", `execScript\s*\(\s*["']EFX["']`},
+		{"EXECSCRIPT", `execScript\s*\(\s*["']EFX`},
 		{"EXECSCRIPT_SINGLE", `execScript\s*\(\s*[']EFX[']`},
 		{"EXECSCRIPT_VAR", `execScript\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// ========== REDIRECIONAMENTO (ALTO) ==========
 		// location
-		{"LOCATION", `location\s*=\s*["']EFX["']`},
+		{"LOCATION", `location\s*=\s*["']EFX`},
 		{"LOCATION_SINGLE", `location\s*=\s*[']EFX[']`},
 		{"LOCATION_VAR", `location\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// location.href
-		{"LOCATION_HREF", `location\.href\s*=\s*["']EFX["']`},
+		{"LOCATION_HREF", `location\.href\s*=\s*["']EFX`},
 		{"LOCATION_HREF_SINGLE", `location\.href\s*=\s*[']EFX[']`},
 		{"LOCATION_HREF_VAR", `location\.href\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// location.assign()
-		{"LOCATION_ASSIGN", `location\.assign\s*\(\s*["']EFX["']\)`},
-		{"LOCATION_ASSIGN_SINGLE", `location\.assign\s*\(\s*[']EFX[']\)`},
-		{"LOCATION_ASSIGN_VAR", `location\.assign\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\)`},
+		{"LOCATION_ASSIGN", `location\.assign\s*\(\s*["']EFX`},
+		{"LOCATION_ASSIGN_SINGLE", `location\.assign\s*\(\s*[']EFX`},
+		{"LOCATION_ASSIGN_VAR", `location\.assign\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// location.replace()
-		{"LOCATION_REPLACE", `location\.replace\s*\(\s*["']EFX["']\)`},
-		{"LOCATION_REPLACE_SINGLE", `location\.replace\s*\(\s*[']EFX[']\)`},
-		{"LOCATION_REPLACE_VAR", `location\.replace\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\)`},
+		{"LOCATION_REPLACE", `location\.replace\s*\(\s*["']EFX`},
+		{"LOCATION_REPLACE_SINGLE", `location\.replace\s*\(\s*[']EFX`},
+		{"LOCATION_REPLACE_VAR", `location\.replace\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// window.location
-		{"WINDOW_LOCATION", `window\.location\s*=\s*["']EFX["']`},
+		{"WINDOW_LOCATION", `window\.location\s*=\s*["']EFX`},
 		{"WINDOW_LOCATION_SINGLE", `window\.location\s*=\s*[']EFX[']`},
 		{"WINDOW_LOCATION_VAR", `window\.location\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// window.location.href
-		{"WINDOW_HREF", `window\.location\.href\s*=\s*["']EFX["']`},
+		{"WINDOW_HREF", `window\.location\.href\s*=\s*["']EFX`},
 		{"WINDOW_HREF_SINGLE", `window\.location\.href\s*=\s*[']EFX[']`},
 		{"WINDOW_HREF_VAR", `window\.location\.href\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// document.location
-		{"DOCUMENT_LOCATION", `document\.location\s*=\s*["']EFX["']`},
+		{"DOCUMENT_LOCATION", `document\.location\s*=\s*["']EFX`},
 		{"DOCUMENT_LOCATION_SINGLE", `document\.location\s*=\s*[']EFX[']`},
 		{"DOCUMENT_LOCATION_VAR", `document\.location\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// redirect()
-		{"REDIRECT", `redirect\s*\(\s*["']EFX["']\)`},
-		{"REDIRECT_SINGLE", `redirect\s*\(\s*[']EFX[']\)`},
-		{"REDIRECT_VAR", `redirect\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\)`},
+		{"REDIRECT", `redirect\s*\(\s*["']EFX`},
+		{"REDIRECT_SINGLE", `redirect\s*\(\s*[']EFX`},
+		{"REDIRECT_VAR", `redirect\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// window.navigate() (IE)
-		{"WINDOW_NAVIGATE", `window\.navigate\s*\(\s*["']EFX["']\)`},
-		{"WINDOW_NAVIGATE_SINGLE", `window\.navigate\s*\(\s*[']EFX[']\)`},
-		{"WINDOW_NAVIGATE_VAR", `window\.navigate\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\)`},
+		{"WINDOW_NAVIGATE", `window\.navigate\s*\(\s*["']EFX`},
+		{"WINDOW_NAVIGATE_SINGLE", `window\.navigate\s*\(\s*[']EFX`},
+		{"WINDOW_NAVIGATE_VAR", `window\.navigate\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// ========== MANIPULAÇÃO DOM (ALTO) ==========
 		// document.write()
-		{"DOCUMENT_WRITE", `document\.write\s*\(\s*["']EFX["']\)`},
-		{"DOCUMENT_WRITE_SINGLE", `document\.write\s*\(\s*[']EFX[']\)`},
-		{"DOCUMENT_WRITE_VAR", `document\.write\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\)`},
+		{"DOCUMENT_WRITE", `document\.write\s*\(\s*["']EFX`},
+		{"DOCUMENT_WRITE_SINGLE", `document\.write\s*\(\s*[']EFX`},
+		{"DOCUMENT_WRITE_VAR", `document\.write\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// document.writeln()
-		{"DOCUMENT_WRITELN", `document\.writeln\s*\(\s*["']EFX["']\)`},
-		{"DOCUMENT_WRITELN_SINGLE", `document\.writeln\s*\(\s*[']EFX[']\)`},
-		{"DOCUMENT_WRITELN_VAR", `document\.writeln\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\)`},
+		{"DOCUMENT_WRITELN", `document\.writeln\s*\(\s*["']EFX`},
+		{"DOCUMENT_WRITELN_SINGLE", `document\.writeln\s*\(\s*[']EFX`},
+		{"DOCUMENT_WRITELN_VAR", `document\.writeln\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// innerHTML
-		{"INNERHTML", `innerHTML\s*=\s*["']EFX["']`},
+		{"INNERHTML", `innerHTML\s*=\s*["']EFX`},
 		{"INNERHTML_SINGLE", `innerHTML\s*=\s*[']EFX[']`},
 		{"INNERHTML_VAR", `innerHTML\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// outerHTML
-		{"OUTERHTML", `outerHTML\s*=\s*["']EFX["']`},
+		{"OUTERHTML", `outerHTML\s*=\s*["']EFX`},
 		{"OUTERHTML_SINGLE", `outerHTML\s*=\s*[']EFX[']`},
 		{"OUTERHTML_VAR", `outerHTML\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// insertAdjacentHTML()
-		{"INSERT_ADJACENT", `insertAdjacentHTML\s*\(\s*["']EFX["']`},
+		{"INSERT_ADJACENT", `insertAdjacentHTML\s*\(\s*["']EFX`},
 		{"INSERT_ADJACENT_SINGLE", `insertAdjacentHTML\s*\(\s*[']EFX[']`},
 		{"INSERT_ADJACENT_VAR", `insertAdjacentHTML\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// insertAdjacentText()
-		{"INSERT_ADJACENT_TEXT", `insertAdjacentText\s*\(\s*["']EFX["']`},
+		{"INSERT_ADJACENT_TEXT", `insertAdjacentText\s*\(\s*["']EFX`},
 		{"INSERT_ADJACENT_TEXT_SINGLE", `insertAdjacentText\s*\(\s*[']EFX[']`},
 		{"INSERT_ADJACENT_TEXT_VAR", `insertAdjacentText\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// ========== ATRIBUTOS PERIGOSOS (MÉDIO) ==========
 		// src
-		{"SRC", `\.src\s*=\s*["']EFX["']`},
+		{"SRC", `\.src\s*=\s*["']EFX`},
 		{"SRC_SINGLE", `\.src\s*=\s*[']EFX[']`},
 		{"SRC_VAR", `\.src\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// href
-		{"HREF", `\.href\s*=\s*["']EFX["']`},
+		{"HREF", `\.href\s*=\s*["']EFX`},
 		{"HREF_SINGLE", `\.href\s*=\s*[']EFX[']`},
 		{"HREF_VAR", `\.href\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// action
-		{"ACTION", `\.action\s*=\s*["']EFX["']`},
+		{"ACTION", `\.action\s*=\s*["']EFX`},
 		{"ACTION_SINGLE", `\.action\s*=\s*[']EFX[']`},
 		{"ACTION_VAR", `\.action\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// formaction
-		{"FORMACTION", `\.formaction\s*=\s*["']EFX["']`},
+		{"FORMACTION", `\.formaction\s*=\s*["']EFX`},
 		{"FORMACTION_SINGLE", `\.formaction\s*=\s*[']EFX[']`},
 		{"FORMACTION_VAR", `\.formaction\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// data
-		{"DATA", `\.data\s*=\s*["']EFX["']`},
+		{"DATA", `\.data\s*=\s*["']EFX`},
 		{"DATA_SINGLE", `\.data\s*=\s*[']EFX[']`},
 		{"DATA_VAR", `\.data\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// value (em contexto específico)
-		{"VALUE", `\.value\s*=\s*["']EFX["']`},
+		{"VALUE", `\.value\s*=\s*["']EFX`},
 		{"VALUE_SINGLE", `\.value\s*=\s*[']EFX[']`},
 		{"VALUE_VAR", `\.value\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// ========== JQUERY (MÉDIO) ==========
 		// $().html()
-		{"JQUERY_HTML", `\$\([^)]*\)\.html\s*\(\s*["']EFX["']\)`},
-		{"JQUERY_HTML_SINGLE", `\$\([^)]*\)\.html\s*\(\s*[']EFX[']\)`},
-		{"JQUERY_HTML_VAR", `\$\([^)]*\)\.html\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\)`},
+		{"JQUERY_HTML", `\$\([^)]*\)\.html\s*\(\s*["']EFX`},
+		{"JQUERY_HTML_SINGLE", `\$\([^)]*\)\.html\s*\(\s*[']EFX`},
+		{"JQUERY_HTML_VAR", `\$\([^)]*\)\.html\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// $().append()
-		{"JQUERY_APPEND", `\$\([^)]*\)\.append\s*\(\s*["']EFX["']\)`},
-		{"JQUERY_APPEND_SINGLE", `\$\([^)]*\)\.append\s*\(\s*[']EFX[']\)`},
-		{"JQUERY_APPEND_VAR", `\$\([^)]*\)\.append\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\)`},
+		{"JQUERY_APPEND", `\$\([^)]*\)\.append\s*\(\s*["']EFX`},
+		{"JQUERY_APPEND_SINGLE", `\$\([^)]*\)\.append\s*\(\s*[']EFX`},
+		{"JQUERY_APPEND_VAR", `\$\([^)]*\)\.append\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// $().prepend()
-		{"JQUERY_PREPEND", `\$\([^)]*\)\.prepend\s*\(\s*["']EFX["']\)`},
-		{"JQUERY_PREPEND_SINGLE", `\$\([^)]*\)\.prepend\s*\(\s*[']EFX[']\)`},
-		{"JQUERY_PREPEND_VAR", `\$\([^)]*\)\.prepend\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\)`},
+		{"JQUERY_PREPEND", `\$\([^)]*\)\.prepend\s*\(\s*["']EFX`},
+		{"JQUERY_PREPEND_SINGLE", `\$\([^)]*\)\.prepend\s*\(\s*[']EFX`},
+		{"JQUERY_PREPEND_VAR", `\$\([^)]*\)\.prepend\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// $().after()
-		{"JQUERY_AFTER", `\$\([^)]*\)\.after\s*\(\s*["']EFX["']\)`},
-		{"JQUERY_AFTER_SINGLE", `\$\([^)]*\)\.after\s*\(\s*[']EFX[']\)`},
-		{"JQUERY_AFTER_VAR", `\$\([^)]*\)\.after\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\)`},
+		{"JQUERY_AFTER", `\$\([^)]*\)\.after\s*\(\s*["']EFX`},
+		{"JQUERY_AFTER_SINGLE", `\$\([^)]*\)\.after\s*\(\s*[']EFX`},
+		{"JQUERY_AFTER_VAR", `\$\([^)]*\)\.after\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// $().before()
-		{"JQUERY_BEFORE", `\$\([^)]*\)\.before\s*\(\s*["']EFX["']\)`},
-		{"JQUERY_BEFORE_SINGLE", `\$\([^)]*\)\.before\s*\(\s*[']EFX[']\)`},
-		{"JQUERY_BEFORE_VAR", `\$\([^)]*\)\.before\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\)`},
+		{"JQUERY_BEFORE", `\$\([^)]*\)\.before\s*\(\s*["']EFX`},
+		{"JQUERY_BEFORE_SINGLE", `\$\([^)]*\)\.before\s*\(\s*[']EFX`},
+		{"JQUERY_BEFORE_VAR", `\$\([^)]*\)\.before\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// $().replaceWith()
-		{"JQUERY_REPLACE", `\$\([^)]*\)\.replaceWith\s*\(\s*["']EFX["']\)`},
-		{"JQUERY_REPLACE_SINGLE", `\$\([^)]*\)\.replaceWith\s*\(\s*[']EFX[']\)`},
-		{"JQUERY_REPLACE_VAR", `\$\([^)]*\)\.replaceWith\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\)`},
+		{"JQUERY_REPLACE", `\$\([^)]*\)\.replaceWith\s*\(\s*["']EFX`},
+		{"JQUERY_REPLACE_SINGLE", `\$\([^)]*\)\.replaceWith\s*\(\s*[']EFX`},
+		{"JQUERY_REPLACE_VAR", `\$\([^)]*\)\.replaceWith\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// $().attr() perigoso
-		{"JQUERY_ATTR_SRC", `\.attr\s*\(\s*["']src["']\s*,\s*["']EFX["']\)`},
-		{"JQUERY_ATTR_HREF", `\.attr\s*\(\s*["']href["']\s*,\s*["']EFX["']\)`},
-		{"JQUERY_ATTR_VAR", `\.attr\s*\(\s*["'](?:src|href|action)["']\s*,\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\)`},
+		{"JQUERY_ATTR_SRC", `\.attr\s*\(\s*["']src["']\s*,\s*["']EFX`},
+		{"JQUERY_ATTR_HREF", `\.attr\s*\(\s*["']href["']\s*,\s*["']EFX`},
+		{"JQUERY_ATTR_VAR", `\.attr\s*\(\s*["'](?:src|href|action)["']\s*,\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// ========== OUTRAS FUNÇÕES PERIGOSAS ==========
 		// window.open()
-		{"WINDOW_OPEN", `window\.open\s*\(\s*["']EFX["']`},
+		{"WINDOW_OPEN", `window\.open\s*\(\s*["']EFX`},
 		{"WINDOW_OPEN_SINGLE", `window\.open\s*\(\s*[']EFX[']`},
 		{"WINDOW_OPEN_VAR", `window\.open\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// document.domain (em contexto)
-		{"DOCUMENT_DOMAIN", `document\.domain\s*=\s*["']EFX["']`},
+		{"DOCUMENT_DOMAIN", `document\.domain\s*=\s*["']EFX`},
 		{"DOCUMENT_DOMAIN_SINGLE", `document\.domain\s*=\s*[']EFX[']`},
 		{"DOCUMENT_DOMAIN_VAR", `document\.domain\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// postMessage() (em contexto)
-		{"POSTMESSAGE", `postMessage\s*\(\s*["']EFX["']`},
+		{"POSTMESSAGE", `postMessage\s*\(\s*["']EFX`},
 		{"POSTMESSAGE_SINGLE", `postMessage\s*\(\s*[']EFX[']`},
 		{"POSTMESSAGE_VAR", `postMessage\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// importScripts() (Web Workers)
-		{"IMPORT_SCRIPTS", `importScripts\s*\(\s*["']EFX["']\)`},
-		{"IMPORT_SCRIPTS_SINGLE", `importScripts\s*\(\s*[']EFX[']\)`},
-		{"IMPORT_SCRIPTS_VAR", `importScripts\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\)`},
+		{"IMPORT_SCRIPTS", `importScripts\s*\(\s*["']EFX`},
+		{"IMPORT_SCRIPTS_SINGLE", `importScripts\s*\(\s*[']EFX`},
+		{"IMPORT_SCRIPTS_VAR", `importScripts\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// ========== FUNÇÕES DE SANITIZAÇÃO FRACA ==========
 		// dangerouslySetInnerHTML (React)
-		{"REACT_DANGEROUS", `dangerouslySetInnerHTML\s*:\s*\{\s*__html\s*:\s*["']EFX["']`},
+		{"REACT_DANGEROUS", `dangerouslySetInnerHTML\s*:\s*\{\s*__html\s*:\s*["']EFX`},
 		{"REACT_DANGEROUS_SINGLE", `dangerouslySetInnerHTML\s*:\s*\{\s*__html\s*:\s*[']EFX[']`},
 		{"REACT_DANGEROUS_VAR", `dangerouslySetInnerHTML\s*:\s*\{\s*__html\s*:\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// v-html (Vue.js)
-		{"VUE_HTML", `v-html\s*=\s*["']EFX["']`},
+		{"VUE_HTML", `v-html\s*=\s*["']EFX`},
 		{"VUE_HTML_SINGLE", `v-html\s*=\s*[']EFX[']`},
 		{"VUE_HTML_VAR", `v-html\s*=\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// ========== FUNÇÕES DE CODIFICAÇÃO/DECODIFICAÇÃO ==========
 		// decodeURI()
-		{"DECODEURI", `decodeURI\s*\(\s*["']EFX["']\)`},
-		{"DECODEURI_SINGLE", `decodeURI\s*\(\s*[']EFX[']\)`},
-		{"DECODEURI_VAR", `decodeURI\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\)`},
+		{"DECODEURI", `decodeURI\s*\(\s*["']EFX`},
+		{"DECODEURI_SINGLE", `decodeURI\s*\(\s*[']EFX`},
+		{"DECODEURI_VAR", `decodeURI\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// decodeURIComponent()
-		{"DECODEURICOMPONENT", `decodeURIComponent\s*\(\s*["']EFX["']\)`},
-		{"DECODEURICOMPONENT_SINGLE", `decodeURIComponent\s*\(\s*[']EFX[']\)`},
-		{"DECODEURICOMPONENT_VAR", `decodeURIComponent\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\)`},
+		{"DECODEURICOMPONENT", `decodeURIComponent\s*\(\s*["']EFX`},
+		{"DECODEURICOMPONENT_SINGLE", `decodeURIComponent\s*\(\s*[']EFX`},
+		{"DECODEURICOMPONENT_VAR", `decodeURIComponent\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 		
 		// ========== FUNÇÕES DE CONSTRUÇÃO DE URL ==========
 		// new URL()
-		{"NEW_URL", `new\s+URL\s*\(\s*["']EFX["']`},
+		{"NEW_URL", `new\s+URL\s*\(\s*["']EFX`},
 		{"NEW_URL_SINGLE", `new\s+URL\s*\(\s*[']EFX[']`},
 		{"NEW_URL_VAR", `new\s+URL\s*\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)`},
 	}

@@ -66,7 +66,7 @@ func usage() {
 |     | |  _| |_'_|_ -|_ -|
 |__|__|_|_| |_|_,_|___|___=
 
-EFX Open Redirect Scanner with Auto-Parameter Extraction
+EFX Open Redirect & DOM Reflection Scanner
 Payload: https://efxtech.com
 Target Domain: efxtech.com
 
@@ -242,13 +242,44 @@ func chunkSlice(slice []string, size int) [][]string {
 	return chunks
 }
 
-// ==================== OPEN REDIRECT DETECTION ====================
+// ==================== DETECTION ENGINE ====================
 
-func detectOpenRedirects(resp *http.Response, bodyStr string, requestedURL string) (bool, string) {
+func analyzeResponse(resp *http.Response, bodyStr string, requestedURL string) (bool, string) {
 	var findings []string
 	
-	// 1. Verificar cabeçalhos HTTP - APENAS REDIRECTS REAIS
-	statusCode := resp.StatusCode
+	// 1. Detectar Open Redirects (cabeçalhos HTTP)
+	redirectFindings := detectHTTPRedirects(resp)
+	if len(redirectFindings) > 0 {
+		findings = append(findings, redirectFindings...)
+	}
+	
+	// 2. Detectar Reflexões DOM em JavaScript
+	domFindings := detectDOMReflections(bodyStr)
+	if len(domFindings) > 0 {
+		findings = append(findings, domFindings...)
+	}
+	
+	// 3. Detectar HTML Redirects
+	htmlFindings := detectHTMLRedirects(bodyStr)
+	if len(htmlFindings) > 0 {
+		findings = append(findings, htmlFindings...)
+	}
+	
+	if len(findings) > 0 {
+		limitedFindings := findings
+		if len(limitedFindings) > 3 {
+			limitedFindings = limitedFindings[:3]
+		}
+		return true, strings.Join(limitedFindings, " | ")
+	}
+	
+	return false, ""
+}
+
+// ==================== HTTP REDIRECT DETECTION ====================
+
+func detectHTTPRedirects(resp *http.Response) []string {
+	var findings []string
 	
 	// Códigos de status que indicam redirecionamento
 	redirectStatusCodes := map[int]bool{
@@ -259,50 +290,33 @@ func detectOpenRedirects(resp *http.Response, bodyStr string, requestedURL strin
 		308: true, // Permanent Redirect
 	}
 	
+	statusCode := resp.StatusCode
 	if redirectStatusCodes[statusCode] {
 		locationHeader := resp.Header.Get("Location")
 		if isExactDomainMatch(locationHeader) {
-			findings = append(findings, fmt.Sprintf("HTTP_%d_Location: %s", statusCode, locationHeader))
+			findings = append(findings, fmt.Sprintf("HTTP_%d: Location: %s", statusCode, locationHeader))
 		}
 	}
 	
-	// 2. Verificar Refresh header - APENAS se for um refresh real
+	// Verificar Refresh header
 	refreshHeader := resp.Header.Get("Refresh")
-	if refreshHeader != "" && containsExactDomain(refreshHeader) {
-		// Verificar se é um refresh válido (não apenas um parâmetro)
-		if isValidRefreshRedirect(refreshHeader) {
-			findings = append(findings, fmt.Sprintf("HTTP_Refresh: %s", refreshHeader))
-		}
+	if refreshHeader != "" && containsExactDomain(refreshHeader) && isValidRefreshRedirect(refreshHeader) {
+		findings = append(findings, fmt.Sprintf("HTTP_Refresh: %s", refreshHeader))
 	}
 	
-	// 3. Verificar corpo HTML - APENAS REDIRECTS GENUÍNOS
-	htmlFindings := detectHTMLRedirects(bodyStr, requestedURL)
-	if len(htmlFindings) > 0 {
-		findings = append(findings, htmlFindings...)
-	}
-	
-	if len(findings) > 0 {
-		limitedFindings := findings
-		if len(limitedFindings) > 3 {
-			limitedFindings = limitedFindings[:3]
-		}
-		return true, "OPEN_REDIRECT: " + strings.Join(limitedFindings, " | ")
-	}
-	
-	return false, ""
+	return findings
 }
 
 func isValidRefreshRedirect(refreshHeader string) bool {
-	// Refresh header válido: "0;url=https://efxtech.com" ou "5;url=https://efxtech.com"
-	// Não válido: algo que contenha o domínio como parâmetro
-	
+	// Padrões válidos para refresh header
 	patterns := []*regexp.Regexp{
-		regexp.MustCompile(`^\d+\s*;\s*(?:url|URL)\s*=\s*(?:https?://)?efxtech\.com`),
-		regexp.MustCompile(`^(?:url|URL)\s*=\s*(?:https?://)?efxtech\.com`),
+		regexp.MustCompile(`(?i)^\d+\s*;\s*(?:url|URL)\s*=\s*(?:https?://)?efxtech\.com`),
+		regexp.MustCompile(`(?i)^(?:url|URL)\s*=\s*(?:https?://)?efxtech\.com`),
 	}
 	
+	cleanHeader := strings.ReplaceAll(refreshHeader, " ", "")
 	for _, pattern := range patterns {
-		if pattern.MatchString(strings.ReplaceAll(refreshHeader, " ", "")) {
+		if pattern.MatchString(cleanHeader) {
 			return true
 		}
 	}
@@ -322,116 +336,233 @@ func isExactDomainMatch(urlStr string) bool {
 	}
 	
 	// Verificar se o host é exatamente efxtech.com
-	if parsed.Hostname() != "efxtech.com" {
+	hostname := parsed.Hostname()
+	if hostname == "" {
 		return false
 	}
 	
-	// URLs válidas (exatas ou com caminho)
-	validPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`^https?://efxtech\.com(/.*)?$`),
-		regexp.MustCompile(`^//efxtech\.com(/.*)?$`),
+	// Remover porta se existir
+	if strings.Contains(hostname, ":") {
+		hostname = strings.Split(hostname, ":")[0]
 	}
 	
-	urlToCheck := urlStr
-	if !strings.Contains(urlToCheck, "//") && strings.HasPrefix(urlToCheck, "/") {
-		// URL relativa, não é um redirect externo
-		return false
-	}
-	
-	for _, pattern := range validPatterns {
-		if pattern.MatchString(urlToCheck) {
-			return true
-		}
-	}
-	
-	return false
+	return hostname == "efxtech.com"
 }
 
-func containsExactDomain(text string) bool {
-	if text == "" {
-		return false
-	}
-	
-	// Padrões que indicam redirecionamento REAL
-	patterns := []*regexp.Regexp{
-		// Meta refresh válido (não parâmetro de URL)
-		regexp.MustCompile(`(?i)(?:url|URL)\s*=\s*(?:https?://)?efxtech\.com(?:[/?#]|$)`),
-		
-		// JavaScript location assignments (não dentro de strings)
-		regexp.MustCompile(`(?i)location\.(?:href|assign|replace)\s*=\s*(?:['"])?(?:https?://)?efxtech\.com(?:['"])?`),
-		regexp.MustCompile(`(?i)window\.location\s*=\s*(?:['"])?(?:https?://)?efxtech\.com(?:['"])?`),
-		
-		// window.open ou window.navigate
-		regexp.MustCompile(`(?i)window\.(?:open|navigate)\s*\(\s*(?:['"])?(?:https?://)?efxtech\.com`),
-		
-		// HTML tags com atributos de redirecionamento
-		regexp.MustCompile(`(?i)<(?:a|form|iframe|meta)[^>]*(?:href|action|src|content)\s*=\s*(?:['"])?(?:https?://)?efxtech\.com`),
-	}
-	
-	// Primeiro verificar se não é um parâmetro de query string
-	// Isso evita falsos positivos como ?param=https://efxtech.com
-	queryParamPattern := regexp.MustCompile(`[?&][^=]+=(?:https?%3A%2F%2F|https?://)?efxtech\.com`)
-	if queryParamPattern.MatchString(text) {
-		return false
-	}
-	
-	// Verificar se é um valor de atributo CSS (falso positivo comum)
-	cssPattern := regexp.MustCompile(`:[^;]*https?://efxtech\.com`)
-	if cssPattern.MatchString(text) {
-		return false
-	}
-	
-	for _, pattern := range patterns {
-		if pattern.MatchString(text) {
-			return true
-		}
-	}
-	
-	return false
-}
+// ==================== DOM REFLECTION DETECTION ====================
 
-func detectHTMLRedirects(bodyStr string, requestedURL string) []string {
+func detectDOMReflections(bodyStr string) []string {
 	var findings []string
 	
-	// Remover conteúdo entre tags script e style para evitar falsos positivos
-	cleanedBody := removeScriptAndStyle(bodyStr)
+	// Normalizar o corpo (remover espaços extras)
+	normalized := normalizeSpaces(bodyStr)
 	
-	// Procurar redirecionamentos genuínos
+	// 1. Detectar variáveis que recebem o payload
+	variables := detectPayloadVariables(normalized)
+	
+	// 2. Detectar payload direto em funções/sinks
+	directFindings := detectDirectPayloadUsage(normalized)
+	findings = append(findings, directFindings...)
+	
+	// 3. Detectar fluxos de variáveis (variável -> sink)
+	variableFlows := detectVariableFlows(normalized, variables)
+	findings = append(findings, variableFlows...)
+	
+	return findings
+}
+
+func detectPayloadVariables(text string) map[string]string {
+	variables := make(map[string]string)
+	
 	patterns := []struct {
 		name string
-		re   *regexp.Regexp
+		re   string
 	}{
-		// Meta refresh
-		{"meta_refresh", regexp.MustCompile(`(?i)<meta[^>]+http-equiv\s*=\s*["']?refresh["']?[^>]+content\s*=\s*["'][^"']*(?:url|URL)\s*=\s*(?:https?://)?efxtech\.com`)},
-		
-		// JavaScript redirects (fora de strings)
-		{"js_location", regexp.MustCompile(`(?i)location\.(?:href|assign|replace)\s*=\s*(?:['"])?(?:https?://)?efxtech\.com`)},
-		{"js_window_location", regexp.MustCompile(`(?i)window\.location\s*=\s*(?:['"])?(?:https?://)?efxtech\.com`)},
-		
-		// Links que realmente redirecionam (não apenas hrefs)
-		{"a_href_redirect", regexp.MustCompile(`(?i)<a[^>]+href\s*=\s*["'](?:https?://)?efxtech\.com[^>]*>(?:[^<]+</a>|>)`)},
-		
-		// Form actions
-		{"form_action", regexp.MustCompile(`(?i)<form[^>]+action\s*=\s*["'](?:https?://)?efxtech\.com`)},
-		
-		// iframe src
-		{"iframe_src", regexp.MustCompile(`(?i)<iframe[^>]+src\s*=\s*["'](?:https?://)?efxtech\.com`)},
+		// Atribuição direta com aspas duplas
+		{"VAR_ASSIGN_DOUBLE", fmt.Sprintf(`([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*["']%s["']`, regexp.QuoteMeta(payload))},
+		// Atribuição direta com aspas simples
+		{"VAR_ASSIGN_SINGLE", fmt.Sprintf(`([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*[']%s[']`, regexp.QuoteMeta(strings.TrimPrefix(payload, "https://")))},
+		// var/let/const com aspas duplas
+		{"VAR_DECL_DOUBLE", fmt.Sprintf(`\b(var|let|const)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*["']%s["']`, regexp.QuoteMeta(payload))},
+		// Atribuição parcial (contém o domínio)
+		{"VAR_PARTIAL", fmt.Sprintf(`([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*["'][^"']*%s[^"']*["']`, regexp.QuoteMeta("efxtech.com"))},
 	}
 	
 	for _, p := range patterns {
-		matches := p.re.FindAllString(cleanedBody, -1)
+		re := regexp.MustCompile(p.re)
+		matches := re.FindAllStringSubmatch(text, -1)
+		
 		for _, match := range matches {
-			// Verificar adicionalmente que não é um parâmetro de URL
-			if !isLikelyFalsePositive(match, requestedURL) {
-				if len(match) > 80 {
-					match = match[:77] + "..."
+			varName := ""
+			
+			if p.name == "VAR_DECL_DOUBLE" {
+				if len(match) >= 3 {
+					varName = match[2]
 				}
-				findings = append(findings, fmt.Sprintf("%s: %s", p.name, match))
+			} else if len(match) >= 2 {
+				varName = match[1]
+			}
+			
+			if varName != "" {
+				context := truncate(match[0], 60)
+				variables[varName] = context
+			}
+		}
+	}
+	
+	return variables
+}
+
+func detectDirectPayloadUsage(text string) []string {
+	var findings []string
+	
+	// Padrões para sinks perigosos que usam o payload diretamente
+	sinks := []struct {
+		name string
+		re   string
+	}{
+		// Redirecionamento JavaScript
+		{"JS_location_href", fmt.Sprintf(`location\.href\s*=\s*["']%s["']`, regexp.QuoteMeta(payload))},
+		{"JS_window_location", fmt.Sprintf(`window\.location\s*=\s*["']%s["']`, regexp.QuoteMeta(payload))},
+		{"JS_window_location_href", fmt.Sprintf(`window\.location\.href\s*=\s*["']%s["']`, regexp.QuoteMeta(payload))},
+		{"JS_location_assign", fmt.Sprintf(`location\.assign\s*\(\s*["']%s["']`, regexp.QuoteMeta(payload))},
+		{"JS_location_replace", fmt.Sprintf(`location\.replace\s*\(\s*["']%s["']`, regexp.QuoteMeta(payload))},
+		
+		// Execução de código
+		{"JS_eval", fmt.Sprintf(`eval\s*\(\s*["']%s`, regexp.QuoteMeta(payload))},
+		{"JS_setTimeout", fmt.Sprintf(`setTimeout\s*\(\s*["']%s`, regexp.QuoteMeta(payload))},
+		{"JS_setInterval", fmt.Sprintf(`setInterval\s*\(\s*["']%s`, regexp.QuoteMeta(payload))},
+		
+		// Manipulação DOM
+		{"DOM_innerHTML", fmt.Sprintf(`innerHTML\s*=\s*["']%s`, regexp.QuoteMeta(payload))},
+		{"DOM_document_write", fmt.Sprintf(`document\.write\s*\(\s*["']%s`, regexp.QuoteMeta(payload))},
+		{"DOM_outerHTML", fmt.Sprintf(`outerHTML\s*=\s*["']%s`, regexp.QuoteMeta(payload))},
+		
+		// Atributos perigosos
+		{"ATTR_src", fmt.Sprintf(`\.src\s*=\s*["']%s["']`, regexp.QuoteMeta(payload))},
+		{"ATTR_href", fmt.Sprintf(`\.href\s*=\s*["']%s["']`, regexp.QuoteMeta(payload))},
+		{"ATTR_action", fmt.Sprintf(`\.action\s*=\s*["']%s["']`, regexp.QuoteMeta(payload))},
+	}
+	
+	for _, sink := range sinks {
+		re := regexp.MustCompile(sink.re)
+		matches := re.FindAllString(text, -1)
+		
+		for _, match := range matches {
+			// Verificar se não é um falso positivo
+			if !isFalsePositive(match) {
+				finding := fmt.Sprintf("DOM_DIRECT: %s: %s", sink.name, truncate(match, 70))
+				findings = append(findings, finding)
 			}
 		}
 	}
 	
 	return findings
+}
+
+func detectVariableFlows(text string, variables map[string]string) []string {
+	var findings []string
+	
+	if len(variables) == 0 {
+		return findings
+	}
+	
+	// Para cada variável que contém o payload
+	for varName, varAssignment := range variables {
+		// Buscar usos desta variável em sinks perigosos
+		sinks := []struct {
+			name string
+			re   string
+		}{
+			// Redirecionamento
+			{"location_href", fmt.Sprintf(`location\.href\s*=\s*%s`, regexp.QuoteMeta(varName))},
+			{"window_location", fmt.Sprintf(`window\.location\s*=\s*%s`, regexp.QuoteMeta(varName))},
+			{"window_location_href", fmt.Sprintf(`window\.location\.href\s*=\s*%s`, regexp.QuoteMeta(varName))},
+			{"location_assign", fmt.Sprintf(`location\.assign\s*\(\s*%s\s*\)`, regexp.QuoteMeta(varName))},
+			{"location_replace", fmt.Sprintf(`location\.replace\s*\(\s*%s\s*\)`, regexp.QuoteMeta(varName))},
+			
+			// Execução de código
+			{"eval", fmt.Sprintf(`eval\s*\(\s*%s\s*\)`, regexp.QuoteMeta(varName))},
+			{"setTimeout", fmt.Sprintf(`setTimeout\s*\(\s*%s\s*[,)]`, regexp.QuoteMeta(varName))},
+			{"setInterval", fmt.Sprintf(`setInterval\s*\(\s*%s\s*[,)]`, regexp.QuoteMeta(varName))},
+			
+			// Manipulação DOM
+			{"innerHTML", fmt.Sprintf(`innerHTML\s*=\s*%s`, regexp.QuoteMeta(varName))},
+			{"document_write", fmt.Sprintf(`document\.write\s*\(\s*%s\s*\)`, regexp.QuoteMeta(varName))},
+			
+			// Atributos
+			{".src", fmt.Sprintf(`\.src\s*=\s*%s`, regexp.QuoteMeta(varName))},
+			{".href", fmt.Sprintf(`\.href\s*=\s*%s`, regexp.QuoteMeta(varName))},
+			{".action", fmt.Sprintf(`\.action\s*=\s*%s`, regexp.QuoteMeta(varName))},
+		}
+		
+		for _, sink := range sinks {
+			re := regexp.MustCompile(sink.re)
+			matches := re.FindAllString(text, -1)
+			
+			for _, match := range matches {
+				if !isFalsePositive(match) {
+					finding := fmt.Sprintf("DOM_FLOW: %s=%s → %s: %s", 
+						varName, truncate(varAssignment, 40), sink.name, truncate(match, 50))
+					findings = append(findings, finding)
+				}
+			}
+		}
+	}
+	
+	return findings
+}
+
+// ==================== HTML REDIRECT DETECTION ====================
+
+func detectHTMLRedirects(bodyStr string) []string {
+	var findings []string
+	
+	// Remover conteúdo entre tags script e style
+	cleanedBody := removeScriptAndStyle(bodyStr)
+	
+	patterns := []struct {
+		name string
+		re   *regexp.Regexp
+	}{
+		// Meta refresh
+		{"HTML_meta_refresh", regexp.MustCompile(`(?i)<meta[^>]+http-equiv\s*=\s*["']?refresh["']?[^>]+content\s*=\s*["'][^"']*(?:url|URL)\s*=\s*(?:https?://)?efxtech\.com`)},
+		
+		// Links que realmente redirecionam
+		{"HTML_a_href", regexp.MustCompile(`(?i)<a[^>]+href\s*=\s*["'](?:https?://)?efxtech\.com[^>]*>`)},
+		
+		// Form actions
+		{"HTML_form_action", regexp.MustCompile(`(?i)<form[^>]+action\s*=\s*["'](?:https?://)?efxtech\.com`)},
+		
+		// iframe src
+		{"HTML_iframe_src", regexp.MustCompile(`(?i)<iframe[^>]+src\s*=\s*["'](?:https?://)?efxtech\.com`)},
+	}
+	
+	for _, p := range patterns {
+		matches := p.re.FindAllString(cleanedBody, -1)
+		for _, match := range matches {
+			if !isFalsePositive(match) {
+				findings = append(findings, fmt.Sprintf("%s: %s", p.name, truncate(match, 70)))
+			}
+		}
+	}
+	
+	return findings
+}
+
+// ==================== UTILITY FUNCTIONS ====================
+
+func normalizeSpaces(text string) string {
+	text = strings.ReplaceAll(text, "\n", " ")
+	text = strings.ReplaceAll(text, "\r", " ")
+	text = strings.ReplaceAll(text, "\t", " ")
+	
+	// Remover múltiplos espaços
+	for strings.Contains(text, "  ") {
+		text = strings.ReplaceAll(text, "  ", " ")
+	}
+	
+	return text
 }
 
 func removeScriptAndStyle(html string) string {
@@ -446,7 +577,32 @@ func removeScriptAndStyle(html string) string {
 	return html
 }
 
-func isLikelyFalsePositive(match string, requestedURL string) bool {
+func containsExactDomain(text string) bool {
+	if text == "" {
+		return false
+	}
+	
+	// Padrões que indicam redirecionamento REAL (não parâmetros de query)
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?i)(?:url|URL)\s*=\s*(?:https?://)?efxtech\.com(?:[/?#]|$)`),
+	}
+	
+	// Primeiro verificar se não é um parâmetro de query string
+	queryParamPattern := regexp.MustCompile(`[?&][^=]+=(?:https?%3A%2F%2F|https?://)?efxtech\.com`)
+	if queryParamPattern.MatchString(text) {
+		return false
+	}
+	
+	for _, pattern := range patterns {
+		if pattern.MatchString(text) {
+			return true
+		}
+	}
+	
+	return false
+}
+
+func isFalsePositive(match string) bool {
 	// Padrões que indicam provável falso positivo
 	falsePositivePatterns := []*regexp.Regexp{
 		// Parâmetros de query string
@@ -455,8 +611,10 @@ func isLikelyFalsePositive(match string, requestedURL string) bool {
 		regexp.MustCompile(`:\s*https?://efxtech\.com`),
 		// Comentários HTML
 		regexp.MustCompile(`<!--.*https?://efxtech\.com.*-->`),
-		// Valores JSON (provavelmente dados, não código)
+		// Valores JSON
 		regexp.MustCompile(`["']https?://efxtech\.com["']\s*:`),
+		// URLs codificadas
+		regexp.MustCompile(`https?%3A%2F%2Fefxtech\.com`),
 	}
 	
 	for _, pattern := range falsePositivePatterns {
@@ -466,6 +624,13 @@ func isLikelyFalsePositive(match string, requestedURL string) bool {
 	}
 	
 	return false
+}
+
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
 
 // ==================== WORKERS ====================
@@ -530,8 +695,8 @@ func processTarget(baseURL string, client *http.Client) string {
 	// 3. Dividir parâmetros em chunks
 	paramChunks := chunkSlice(allParams, paramCount)
 	
-	var foundRedirect bool
-	var redirectResults []string
+	var foundIssue bool
+	var issueResults []string
 	
 	// 4. Testar cada chunk de parâmetros
 	for _, chunk := range paramChunks {
@@ -542,36 +707,36 @@ func processTarget(baseURL string, client *http.Client) string {
 		// Testar com método GET
 		if methodMode == "" || methodMode == "get" {
 			if result := testMethod("GET", baseURL, chunk, client); result != "" {
-				foundRedirect = true
-				redirectResults = append(redirectResults, result)
+				foundIssue = true
+				issueResults = append(issueResults, result)
 			}
 		}
 		
 		// Testar com método POST
 		if methodMode == "" || methodMode == "post" {
 			if result := testMethod("POST", baseURL, chunk, client); result != "" {
-				foundRedirect = true
-				redirectResults = append(redirectResults, result)
+				foundIssue = true
+				issueResults = append(issueResults, result)
 			}
 		}
 	}
 	
 	// 5. Retornar resultados
-	if foundRedirect {
-		// Se onlyPOC, retornar apenas os que têm redirect
+	if foundIssue {
+		// Se onlyPOC, retornar apenas os que têm problemas
 		if onlyPOC {
 			var pocResults []string
-			for _, r := range redirectResults {
-				if strings.Contains(r, "REDIRECT") {
+			for _, r := range issueResults {
+				if strings.Contains(r, "REDIRECT") || strings.Contains(r, "DOM_") {
 					pocResults = append(pocResults, r)
 				}
 			}
 			return strings.Join(pocResults, "\n")
 		}
-		return strings.Join(redirectResults, "\n")
+		return strings.Join(issueResults, "\n")
 	}
 	
-	// Se não encontrou redirect, mostra NOT_REFLECTED (sempre mostra)
+	// Se não encontrou problema, mostra NOT_REFLECTED (sempre mostra)
 	// Mas só mostra se não estiver em modo onlyPOC
 	if !onlyPOC {
 		return fmt.Sprintf("\033[1;30mNOT_REFLECTED - %s (tested %d params)\033[0m", baseURL, len(allParams))
@@ -638,23 +803,29 @@ func testMethod(method, base string, params []string, client *http.Client) strin
 	body, _ := ioutil.ReadAll(resp.Body)
 	bodyStr := string(body)
 
-	// Verificar por Open Redirect
-	hasRedirect, redirectContext := detectOpenRedirects(resp, bodyStr, finalURL)
+	// Analisar a resposta
+	hasIssue, issueContext := analyzeResponse(resp, bodyStr, finalURL)
 	
-	if hasRedirect {
+	if hasIssue {
 		color := "\033[1;33m" // Amarelo para Open Redirect
+		
+		// Verificar se é DOM XSS (mais crítico)
+		if strings.Contains(issueContext, "DOM_") {
+			color = "\033[1;31m" // Vermelho para DOM XSS
+		}
+		
 		paramInfo := fmt.Sprintf("(%d params)", len(params))
 		
 		if method == "GET" {
 			if onlyPOC {
-				return fmt.Sprintf("%sREDIRECT - %s %s | %s\033[0m", color, finalURL, paramInfo, redirectContext)
+				return fmt.Sprintf("%sREFLECTED - %s %s | %s\033[0m", color, finalURL, paramInfo, issueContext)
 			}
-			return fmt.Sprintf("%sGET REDIRECT - %s %s | %s\033[0m", color, finalURL, paramInfo, redirectContext)
+			return fmt.Sprintf("%sGET REFLECTED - %s %s | %s\033[0m", color, finalURL, paramInfo, issueContext)
 		} else {
 			if onlyPOC {
-				return fmt.Sprintf("%sREDIRECT - %s %s | %s\033[0m", color, base, paramInfo, redirectContext)
+				return fmt.Sprintf("%sREFLECTED - %s %s | %s\033[0m", color, base, paramInfo, issueContext)
 			}
-			return fmt.Sprintf("%sPOST REDIRECT - %s %s | %s\033[0m", color, base, paramInfo, redirectContext)
+			return fmt.Sprintf("%sPOST REFLECTED - %s %s | %s\033[0m", color, base, paramInfo, issueContext)
 		}
 	} else if debugMode && !onlyPOC {
 		// Só mostra NOT_REFLECTED se estiver em debug mode

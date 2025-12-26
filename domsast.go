@@ -244,22 +244,39 @@ func chunkSlice(slice []string, size int) [][]string {
 
 // ==================== OPEN REDIRECT DETECTION ====================
 
-func detectOpenRedirects(resp *http.Response, bodyStr string) (bool, string) {
+func detectOpenRedirects(resp *http.Response, bodyStr string, requestedURL string) (bool, string) {
 	var findings []string
 	
-	// 1. Verificar cabeçalhos HTTP
-	locationHeader := resp.Header.Get("Location")
-	if isExactDomainMatch(locationHeader) {
-		findings = append(findings, fmt.Sprintf("HTTP_Location: %s", locationHeader))
+	// 1. Verificar cabeçalhos HTTP - APENAS REDIRECTS REAIS
+	statusCode := resp.StatusCode
+	
+	// Códigos de status que indicam redirecionamento
+	redirectStatusCodes := map[int]bool{
+		301: true, // Moved Permanently
+		302: true, // Found
+		303: true, // See Other
+		307: true, // Temporary Redirect
+		308: true, // Permanent Redirect
 	}
 	
+	if redirectStatusCodes[statusCode] {
+		locationHeader := resp.Header.Get("Location")
+		if isExactDomainMatch(locationHeader) {
+			findings = append(findings, fmt.Sprintf("HTTP_%d_Location: %s", statusCode, locationHeader))
+		}
+	}
+	
+	// 2. Verificar Refresh header - APENAS se for um refresh real
 	refreshHeader := resp.Header.Get("Refresh")
-	if containsExactDomain(refreshHeader) {
-		findings = append(findings, fmt.Sprintf("HTTP_Refresh: %s", refreshHeader))
+	if refreshHeader != "" && containsExactDomain(refreshHeader) {
+		// Verificar se é um refresh válido (não apenas um parâmetro)
+		if isValidRefreshRedirect(refreshHeader) {
+			findings = append(findings, fmt.Sprintf("HTTP_Refresh: %s", refreshHeader))
+		}
 	}
 	
-	// 2. Verificar corpo HTML
-	htmlFindings := detectHTMLRedirects(bodyStr)
+	// 3. Verificar corpo HTML - APENAS REDIRECTS GENUÍNOS
+	htmlFindings := detectHTMLRedirects(bodyStr, requestedURL)
 	if len(htmlFindings) > 0 {
 		findings = append(findings, htmlFindings...)
 	}
@@ -275,33 +292,54 @@ func detectOpenRedirects(resp *http.Response, bodyStr string) (bool, string) {
 	return false, ""
 }
 
+func isValidRefreshRedirect(refreshHeader string) bool {
+	// Refresh header válido: "0;url=https://efxtech.com" ou "5;url=https://efxtech.com"
+	// Não válido: algo que contenha o domínio como parâmetro
+	
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`^\d+\s*;\s*(?:url|URL)\s*=\s*(?:https?://)?efxtech\.com`),
+		regexp.MustCompile(`^(?:url|URL)\s*=\s*(?:https?://)?efxtech\.com`),
+	}
+	
+	for _, pattern := range patterns {
+		if pattern.MatchString(strings.ReplaceAll(refreshHeader, " ", "")) {
+			return true
+		}
+	}
+	
+	return false
+}
+
 func isExactDomainMatch(urlStr string) bool {
 	if urlStr == "" {
 		return false
 	}
 	
-	// Verificar URLs exatas
-	exactMatches := []string{
-		"https://efxtech.com",
-		"http://efxtech.com",
-		"https://efxtech.com/",
-		"http://efxtech.com/",
+	// Parse a URL para verificar componentes
+	parsed, err := url.Parse(urlStr)
+	if err != nil {
+		return false
 	}
 	
-	for _, match := range exactMatches {
-		if urlStr == match {
-			return true
-		}
+	// Verificar se o host é exatamente efxtech.com
+	if parsed.Hostname() != "efxtech.com" {
+		return false
 	}
 	
-	// Verificar se começa com o domínio
-	patterns := []*regexp.Regexp{
-		regexp.MustCompile(`^https?://efxtech\.com(/|$)`),
-		regexp.MustCompile(`^//efxtech\.com(/|$)`),
+	// URLs válidas (exatas ou com caminho)
+	validPatterns := []*regexp.Regexp{
+		regexp.MustCompile(`^https?://efxtech\.com(/.*)?$`),
+		regexp.MustCompile(`^//efxtech\.com(/.*)?$`),
 	}
 	
-	for _, pattern := range patterns {
-		if pattern.MatchString(urlStr) {
+	urlToCheck := urlStr
+	if !strings.Contains(urlToCheck, "//") && strings.HasPrefix(urlToCheck, "/") {
+		// URL relativa, não é um redirect externo
+		return false
+	}
+	
+	for _, pattern := range validPatterns {
+		if pattern.MatchString(urlToCheck) {
 			return true
 		}
 	}
@@ -314,17 +352,37 @@ func containsExactDomain(text string) bool {
 		return false
 	}
 	
+	// Padrões que indicam redirecionamento REAL
 	patterns := []*regexp.Regexp{
-		// Meta refresh patterns
-		regexp.MustCompile(`url\s*=\s*(?:['"])?(?:https?://)?efxtech\.com(?:['"])?`),
-		regexp.MustCompile(`URL\s*=\s*(?:['"])?(?:https?://)?efxtech\.com(?:['"])?`),
-		// Location patterns in JavaScript
-		regexp.MustCompile(`location\s*\.\s*(?:href|assign|replace)\s*=\s*(?:['"])?(?:https?://)?efxtech\.com(?:['"])?`),
-		regexp.MustCompile(`window\s*\.\s*location\s*=\s*(?:['"])?(?:https?://)?efxtech\.com(?:['"])?`),
+		// Meta refresh válido (não parâmetro de URL)
+		regexp.MustCompile(`(?i)(?:url|URL)\s*=\s*(?:https?://)?efxtech\.com(?:[/?#]|$)`),
+		
+		// JavaScript location assignments (não dentro de strings)
+		regexp.MustCompile(`(?i)location\.(?:href|assign|replace)\s*=\s*(?:['"])?(?:https?://)?efxtech\.com(?:['"])?`),
+		regexp.MustCompile(`(?i)window\.location\s*=\s*(?:['"])?(?:https?://)?efxtech\.com(?:['"])?`),
+		
+		// window.open ou window.navigate
+		regexp.MustCompile(`(?i)window\.(?:open|navigate)\s*\(\s*(?:['"])?(?:https?://)?efxtech\.com`),
+		
+		// HTML tags com atributos de redirecionamento
+		regexp.MustCompile(`(?i)<(?:a|form|iframe|meta)[^>]*(?:href|action|src|content)\s*=\s*(?:['"])?(?:https?://)?efxtech\.com`),
+	}
+	
+	// Primeiro verificar se não é um parâmetro de query string
+	// Isso evita falsos positivos como ?param=https://efxtech.com
+	queryParamPattern := regexp.MustCompile(`[?&][^=]+=(?:https?%3A%2F%2F|https?://)?efxtech\.com`)
+	if queryParamPattern.MatchString(text) {
+		return false
+	}
+	
+	// Verificar se é um valor de atributo CSS (falso positivo comum)
+	cssPattern := regexp.MustCompile(`:[^;]*https?://efxtech\.com`)
+	if cssPattern.MatchString(text) {
+		return false
 	}
 	
 	for _, pattern := range patterns {
-		if pattern.MatchString(strings.ToLower(text)) {
+		if pattern.MatchString(text) {
 			return true
 		}
 	}
@@ -332,55 +390,82 @@ func containsExactDomain(text string) bool {
 	return false
 }
 
-func detectHTMLRedirects(bodyStr string) []string {
+func detectHTMLRedirects(bodyStr string, requestedURL string) []string {
 	var findings []string
 	
-	// Normalizar o corpo
-	normalized := strings.ToLower(bodyStr)
-	normalized = strings.ReplaceAll(normalized, " ", "")
-	normalized = strings.ReplaceAll(normalized, "\n", "")
-	normalized = strings.ReplaceAll(normalized, "\r", "")
-	normalized = strings.ReplaceAll(normalized, "\t", "")
+	// Remover conteúdo entre tags script e style para evitar falsos positivos
+	cleanedBody := removeScriptAndStyle(bodyStr)
 	
-	// Padrões exatos para procurar
+	// Procurar redirecionamentos genuínos
 	patterns := []struct {
 		name string
-		re   string
+		re   *regexp.Regexp
 	}{
 		// Meta refresh
-		{"meta_refresh", `http-equiv=["']refresh["'][^>]*content=["'][^"']*url\s*=\s*(?:https?://)?efxtech\.com`},
-		{"meta_refresh_short", `content=["'][^"']*url\s*=\s*(?:https?://)?efxtech\.com`},
+		{"meta_refresh", regexp.MustCompile(`(?i)<meta[^>]+http-equiv\s*=\s*["']?refresh["']?[^>]+content\s*=\s*["'][^"']*(?:url|URL)\s*=\s*(?:https?://)?efxtech\.com`)},
 		
-		// JavaScript redirects
-		{"js_location_href", `location\.href\s*=\s*(?:['"])?(?:https?://)?efxtech\.com`},
-		{"js_window_location", `window\.location\s*=\s*(?:['"])?(?:https?://)?efxtech\.com`},
-		{"js_location_assign", `location\.assign\s*\(\s*(?:['"])?(?:https?://)?efxtech\.com`},
-		{"js_location_replace", `location\.replace\s*\(\s*(?:['"])?(?:https?://)?efxtech\.com`},
+		// JavaScript redirects (fora de strings)
+		{"js_location", regexp.MustCompile(`(?i)location\.(?:href|assign|replace)\s*=\s*(?:['"])?(?:https?://)?efxtech\.com`)},
+		{"js_window_location", regexp.MustCompile(`(?i)window\.location\s*=\s*(?:['"])?(?:https?://)?efxtech\.com`)},
 		
-		// Links e forms
-		{"a_href", `<a[^>]*href=["'](?:https?://)?efxtech\.com`},
-		{"form_action", `<form[^>]*action=["'](?:https?://)?efxtech\.com`},
-		{"iframe_src", `<iframe[^>]*src=["'](?:https?://)?efxtech\.com`},
+		// Links que realmente redirecionam (não apenas hrefs)
+		{"a_href_redirect", regexp.MustCompile(`(?i)<a[^>]+href\s*=\s*["'](?:https?://)?efxtech\.com[^>]*>(?:[^<]+</a>|>)`)},
 		
-		// Outras formas
-		{"window_open", `window\.open\s*\(\s*(?:['"])?(?:https?://)?efxtech\.com`},
-		{"window_navigate", `window\.navigate\s*\(\s*(?:['"])?(?:https?://)?efxtech\.com`},
+		// Form actions
+		{"form_action", regexp.MustCompile(`(?i)<form[^>]+action\s*=\s*["'](?:https?://)?efxtech\.com`)},
+		
+		// iframe src
+		{"iframe_src", regexp.MustCompile(`(?i)<iframe[^>]+src\s*=\s*["'](?:https?://)?efxtech\.com`)},
 	}
 	
 	for _, p := range patterns {
-		re := regexp.MustCompile(p.re)
-		matches := re.FindAllString(normalized, -1)
-		
+		matches := p.re.FindAllString(cleanedBody, -1)
 		for _, match := range matches {
-			// Limitar o tamanho do match para exibição
-			if len(match) > 80 {
-				match = match[:77] + "..."
+			// Verificar adicionalmente que não é um parâmetro de URL
+			if !isLikelyFalsePositive(match, requestedURL) {
+				if len(match) > 80 {
+					match = match[:77] + "..."
+				}
+				findings = append(findings, fmt.Sprintf("%s: %s", p.name, match))
 			}
-			findings = append(findings, fmt.Sprintf("%s: %s", p.name, match))
 		}
 	}
 	
 	return findings
+}
+
+func removeScriptAndStyle(html string) string {
+	// Remover conteúdo entre <script> tags
+	scriptPattern := regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`)
+	html = scriptPattern.ReplaceAllString(html, "")
+	
+	// Remover conteúdo entre <style> tags
+	stylePattern := regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`)
+	html = stylePattern.ReplaceAllString(html, "")
+	
+	return html
+}
+
+func isLikelyFalsePositive(match string, requestedURL string) bool {
+	// Padrões que indicam provável falso positivo
+	falsePositivePatterns := []*regexp.Regexp{
+		// Parâmetros de query string
+		regexp.MustCompile(`[?&][^=]+=https?://efxtech\.com`),
+		// Atributos CSS
+		regexp.MustCompile(`:\s*https?://efxtech\.com`),
+		// Comentários HTML
+		regexp.MustCompile(`<!--.*https?://efxtech\.com.*-->`),
+		// Valores JSON (provavelmente dados, não código)
+		regexp.MustCompile(`["']https?://efxtech\.com["']\s*:`),
+	}
+	
+	for _, pattern := range falsePositivePatterns {
+		if pattern.MatchString(match) {
+			return true
+		}
+	}
+	
+	return false
 }
 
 // ==================== WORKERS ====================
@@ -554,7 +639,7 @@ func testMethod(method, base string, params []string, client *http.Client) strin
 	bodyStr := string(body)
 
 	// Verificar por Open Redirect
-	hasRedirect, redirectContext := detectOpenRedirects(resp, bodyStr)
+	hasRedirect, redirectContext := detectOpenRedirects(resp, bodyStr, finalURL)
 	
 	if hasRedirect {
 		color := "\033[1;33m" // Amarelo para Open Redirect

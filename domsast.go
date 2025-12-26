@@ -66,9 +66,8 @@ func usage() {
 |     | |  _| |_'_|_ -|_ -|
 |__|__|_|_| |_|_,_|___|___=
 
-EFX Open Redirect & DOM Reflection Scanner
+EFX Scanner - Open Redirect & DOM Reflection
 Payload: https://efxtech.com
-Target Domain: efxtech.com
 
 Usage:
   cat urls.txt | ./program [options]
@@ -107,7 +106,7 @@ func main() {
 	}
 
 	if debugMode {
-		fmt.Printf("[*] Starting EFX Scanner (Domain: %s)\n", domain)
+		fmt.Printf("[*] Starting EFX Scanner (Payload: %s)\n", payload)
 		fmt.Printf("[*] Mode: %d, Threads: %d, Params/req: %d\n", extractMode, concurrency, paramCount)
 	}
 
@@ -163,19 +162,14 @@ func extractParameters(body string, mode int) []string {
 	var regex *regexp.Regexp
 	switch mode {
 	case 1:
-		// JSON keys: "key": or 'key':
 		regex = regexp.MustCompile(`['"]?([a-zA-Z0-9_-]+)['"]?\s*:`)
 	case 2:
-		// Input names: name="key"
 		regex = regexp.MustCompile(`name=["']([a-zA-Z0-9_-]+)["']`)
 	case 3:
-		// IDs: id="key"
 		regex = regexp.MustCompile(`id=["']([a-zA-Z0-9_-]+)["']`)
 	case 4:
-		// Query parameters: ?key= ou &key=
 		regex = regexp.MustCompile(`[?&]([a-zA-Z0-9_-]+)=`)
 	case 5:
-		// JavaScript variables: key =
 		regex = regexp.MustCompile(`([a-zA-Z0-9_-]+)\s*=\s*['"]?[^'"]`)
 	default:
 		return []string{}
@@ -187,7 +181,6 @@ func extractParameters(body string, mode int) []string {
 	for _, m := range matches {
 		if len(m) > 1 {
 			key := m[1]
-			// Filtrar palavras comuns/chaves de sistema
 			if !isCommonKey(key) && len(key) > 2 {
 				unique[key] = true
 			}
@@ -204,17 +197,14 @@ func extractParameters(body string, mode int) []string {
 
 func isCommonKey(key string) bool {
 	common := map[string]bool{
-		// Palavras comuns em HTML/JS
 		"id": true, "name": true, "class": true, "type": true, "value": true,
 		"src": true, "href": true, "alt": true, "title": true, "style": true,
 		"width": true, "height": true, "method": true, "action": true,
 		"data": true, "role": true, "target": true, "rel": true,
-		// JavaScript common
 		"var": true, "let": true, "const": true, "function": true,
 		"return": true, "if": true, "else": true, "for": true, "while": true,
 		"true": true, "false": true, "null": true, "undefined": true,
 		"this": true, "window": true, "document": true, "location": true,
-		// HTTP/URL common
 		"http": true, "https": true, "url": true, "uri": true, "path": true,
 		"host": true, "port": true, "query": true, "param": true,
 	}
@@ -244,33 +234,23 @@ func chunkSlice(slice []string, size int) [][]string {
 
 // ==================== DETECTION ENGINE ====================
 
-func analyzeResponse(resp *http.Response, bodyStr string, requestedURL string) (bool, string) {
-	var findings []string
-	
-	// 1. Detectar Open Redirects (cabeçalhos HTTP)
-	redirectFindings := detectHTTPRedirects(resp)
-	if len(redirectFindings) > 0 {
-		findings = append(findings, redirectFindings...)
+func analyzeResponse(resp *http.Response, bodyStr string) (bool, string) {
+	// 1. Verificar Open Redirect via HTTP headers
+	httpRedirect, httpContext := detectHTTPRedirect(resp)
+	if httpRedirect {
+		return true, "HTTP_REDIRECT: " + httpContext
 	}
 	
-	// 2. Detectar Reflexões DOM em JavaScript
-	domFindings := detectDOMReflections(bodyStr)
-	if len(domFindings) > 0 {
-		findings = append(findings, domFindings...)
+	// 2. Verificar reflexões DOM no corpo
+	domReflection, domContext := detectDOMReflection(bodyStr)
+	if domReflection {
+		return true, "DOM_REFLECTION: " + domContext
 	}
 	
-	// 3. Detectar HTML Redirects
-	htmlFindings := detectHTMLRedirects(bodyStr)
-	if len(htmlFindings) > 0 {
-		findings = append(findings, htmlFindings...)
-	}
-	
-	if len(findings) > 0 {
-		limitedFindings := findings
-		if len(limitedFindings) > 3 {
-			limitedFindings = limitedFindings[:3]
-		}
-		return true, strings.Join(limitedFindings, " | ")
+	// 3. Verificar HTML redirects
+	htmlRedirect, htmlContext := detectHTMLRedirect(bodyStr)
+	if htmlRedirect {
+		return true, "HTML_REDIRECT: " + htmlContext
 	}
 	
 	return false, ""
@@ -278,45 +258,69 @@ func analyzeResponse(resp *http.Response, bodyStr string, requestedURL string) (
 
 // ==================== HTTP REDIRECT DETECTION ====================
 
-func detectHTTPRedirects(resp *http.Response) []string {
-	var findings []string
-	
-	// Códigos de status que indicam redirecionamento
-	redirectStatusCodes := map[int]bool{
-		301: true, // Moved Permanently
-		302: true, // Found
-		303: true, // See Other
-		307: true, // Temporary Redirect
-		308: true, // Permanent Redirect
+func detectHTTPRedirect(resp *http.Response) (bool, string) {
+	// Verificar status codes de redirect
+	redirectCodes := map[int]bool{
+		301: true, 302: true, 303: true, 307: true, 308: true,
 	}
 	
-	statusCode := resp.StatusCode
-	if redirectStatusCodes[statusCode] {
-		locationHeader := resp.Header.Get("Location")
-		if isExactDomainMatch(locationHeader) {
-			findings = append(findings, fmt.Sprintf("HTTP_%d: Location: %s", statusCode, locationHeader))
+	status := resp.StatusCode
+	if redirectCodes[status] {
+		location := resp.Header.Get("Location")
+		if isExactRedirect(location) {
+			return true, fmt.Sprintf("%d Location: %s", status, location)
 		}
 	}
 	
 	// Verificar Refresh header
-	refreshHeader := resp.Header.Get("Refresh")
-	if refreshHeader != "" && containsExactDomain(refreshHeader) && isValidRefreshRedirect(refreshHeader) {
-		findings = append(findings, fmt.Sprintf("HTTP_Refresh: %s", refreshHeader))
+	refresh := resp.Header.Get("Refresh")
+	if refresh != "" && containsValidRedirect(refresh) {
+		return true, fmt.Sprintf("Refresh: %s", refresh)
 	}
 	
-	return findings
+	return false, ""
 }
 
-func isValidRefreshRedirect(refreshHeader string) bool {
-	// Padrões válidos para refresh header
-	patterns := []*regexp.Regexp{
-		regexp.MustCompile(`(?i)^\d+\s*;\s*(?:url|URL)\s*=\s*(?:https?://)?efxtech\.com`),
-		regexp.MustCompile(`(?i)^(?:url|URL)\s*=\s*(?:https?://)?efxtech\.com`),
+func isExactRedirect(urlStr string) bool {
+	if urlStr == "" {
+		return false
 	}
 	
-	cleanHeader := strings.ReplaceAll(refreshHeader, " ", "")
+	// URLs exatas que redirecionam para efxtech.com
+	exactURLs := []string{
+		"https://efxtech.com",
+		"http://efxtech.com",
+		"https://efxtech.com/",
+		"http://efxtech.com/",
+	}
+	
+	for _, exact := range exactURLs {
+		if urlStr == exact {
+			return true
+		}
+	}
+	
+	// Verificar se começa com https://efxtech.com/ (com path)
+	if strings.HasPrefix(urlStr, "https://efxtech.com/") || 
+	   strings.HasPrefix(urlStr, "http://efxtech.com/") {
+		return true
+	}
+	
+	return false
+}
+
+func containsValidRedirect(text string) bool {
+	// Padrões válidos para refresh
+	patterns := []string{
+		`url=https://efxtech.com`,
+		`url=http://efxtech.com`,
+		`URL=https://efxtech.com`,
+		`URL=http://efxtech.com`,
+	}
+	
+	text = strings.ToLower(strings.ReplaceAll(text, " ", ""))
 	for _, pattern := range patterns {
-		if pattern.MatchString(cleanHeader) {
+		if strings.Contains(text, pattern) {
 			return true
 		}
 	}
@@ -324,88 +328,65 @@ func isValidRefreshRedirect(refreshHeader string) bool {
 	return false
 }
 
-func isExactDomainMatch(urlStr string) bool {
-	if urlStr == "" {
-		return false
-	}
-	
-	// Parse a URL para verificar componentes
-	parsed, err := url.Parse(urlStr)
-	if err != nil {
-		return false
-	}
-	
-	// Verificar se o host é exatamente efxtech.com
-	hostname := parsed.Hostname()
-	if hostname == "" {
-		return false
-	}
-	
-	// Remover porta se existir
-	if strings.Contains(hostname, ":") {
-		hostname = strings.Split(hostname, ":")[0]
-	}
-	
-	return hostname == "efxtech.com"
-}
-
 // ==================== DOM REFLECTION DETECTION ====================
 
-func detectDOMReflections(bodyStr string) []string {
-	var findings []string
+func detectDOMReflection(body string) (bool, string) {
+	// 1. Encontrar variáveis que recebem EXATAMENTE o payload
+	variables := findExactPayloadVariables(body)
 	
-	// Normalizar o corpo (remover espaços extras)
-	normalized := normalizeSpaces(bodyStr)
+	// 2. Verificar uso dessas variáveis em sinks perigosos
+	if len(variables) > 0 {
+		for varName, assignment := range variables {
+			if usedInSink(body, varName) {
+				return true, fmt.Sprintf("%s = %s -> used in sink", varName, assignment)
+			}
+		}
+	}
 	
-	// 1. Detectar variáveis que recebem o payload
-	variables := detectPayloadVariables(normalized)
+	// 3. Verificar payload direto em sinks
+	directSinks := findDirectPayloadInSinks(body)
+	if len(directSinks) > 0 {
+		return true, strings.Join(directSinks[:min(2, len(directSinks))], " | ")
+	}
 	
-	// 2. Detectar payload direto em funções/sinks
-	directFindings := detectDirectPayloadUsage(normalized)
-	findings = append(findings, directFindings...)
-	
-	// 3. Detectar fluxos de variáveis (variável -> sink)
-	variableFlows := detectVariableFlows(normalized, variables)
-	findings = append(findings, variableFlows...)
-	
-	return findings
+	return false, ""
 }
 
-func detectPayloadVariables(text string) map[string]string {
+func findExactPayloadVariables(body string) map[string]string {
 	variables := make(map[string]string)
 	
+	// Padrões EXATOS (deve fechar aspas!)
 	patterns := []struct {
-		name string
-		re   string
+		re *regexp.Regexp
 	}{
-		// Atribuição direta com aspas duplas
-		{"VAR_ASSIGN_DOUBLE", fmt.Sprintf(`([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*["']%s["']`, regexp.QuoteMeta(payload))},
-		// Atribuição direta com aspas simples
-		{"VAR_ASSIGN_SINGLE", fmt.Sprintf(`([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*[']%s[']`, regexp.QuoteMeta(strings.TrimPrefix(payload, "https://")))},
-		// var/let/const com aspas duplas
-		{"VAR_DECL_DOUBLE", fmt.Sprintf(`\b(var|let|const)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*["']%s["']`, regexp.QuoteMeta(payload))},
-		// Atribuição parcial (contém o domínio)
-		{"VAR_PARTIAL", fmt.Sprintf(`([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*["'][^"']*%s[^"']*["']`, regexp.QuoteMeta("efxtech.com"))},
+		// var url = "https://efxtech.com"
+		{regexp.MustCompile(`([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*"https://efxtech\.com"`)},
+		// var url = 'https://efxtech.com'
+		{regexp.MustCompile(`([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*'https://efxtech\.com'`)},
+		// var url = "https://efxtech.com";
+		{regexp.MustCompile(`([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*"https://efxtech\.com";`)},
+		// var url = 'https://efxtech.com';
+		{regexp.MustCompile(`([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*'https://efxtech\.com';`)},
+		// var url = "https://efxtech.com"
+		{regexp.MustCompile(`\b(var|let|const)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*"https://efxtech\.com"`)},
+		// var url = 'https://efxtech.com'
+		{regexp.MustCompile(`\b(var|let|const)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*'https://efxtech\.com'`)},
 	}
 	
 	for _, p := range patterns {
-		re := regexp.MustCompile(p.re)
-		matches := re.FindAllStringSubmatch(text, -1)
-		
+		matches := p.re.FindAllStringSubmatch(body, -1)
 		for _, match := range matches {
 			varName := ""
-			
-			if p.name == "VAR_DECL_DOUBLE" {
-				if len(match) >= 3 {
-					varName = match[2]
-				}
+			if len(match) >= 3 && (match[1] == "var" || match[1] == "let" || match[1] == "const") {
+				// var url = "https://efxtech.com"
+				varName = match[2]
 			} else if len(match) >= 2 {
+				// url = "https://efxtech.com"
 				varName = match[1]
 			}
 			
-			if varName != "" {
-				context := truncate(match[0], 60)
-				variables[varName] = context
+			if varName != "" && !strings.Contains(varName, "://") {
+				variables[varName] = truncate(match[0], 50)
 			}
 		}
 	}
@@ -413,99 +394,79 @@ func detectPayloadVariables(text string) map[string]string {
 	return variables
 }
 
-func detectDirectPayloadUsage(text string) []string {
-	var findings []string
-	
-	// Padrões para sinks perigosos que usam o payload diretamente
+func usedInSink(body string, varName string) bool {
+	// Sinks perigosos que podem usar a variável
 	sinks := []struct {
-		name string
-		re   string
+		pattern string
 	}{
-		// Redirecionamento JavaScript
-		{"JS_location_href", fmt.Sprintf(`location\.href\s*=\s*["']%s["']`, regexp.QuoteMeta(payload))},
-		{"JS_window_location", fmt.Sprintf(`window\.location\s*=\s*["']%s["']`, regexp.QuoteMeta(payload))},
-		{"JS_window_location_href", fmt.Sprintf(`window\.location\.href\s*=\s*["']%s["']`, regexp.QuoteMeta(payload))},
-		{"JS_location_assign", fmt.Sprintf(`location\.assign\s*\(\s*["']%s["']`, regexp.QuoteMeta(payload))},
-		{"JS_location_replace", fmt.Sprintf(`location\.replace\s*\(\s*["']%s["']`, regexp.QuoteMeta(payload))},
-		
-		// Execução de código
-		{"JS_eval", fmt.Sprintf(`eval\s*\(\s*["']%s`, regexp.QuoteMeta(payload))},
-		{"JS_setTimeout", fmt.Sprintf(`setTimeout\s*\(\s*["']%s`, regexp.QuoteMeta(payload))},
-		{"JS_setInterval", fmt.Sprintf(`setInterval\s*\(\s*["']%s`, regexp.QuoteMeta(payload))},
-		
-		// Manipulação DOM
-		{"DOM_innerHTML", fmt.Sprintf(`innerHTML\s*=\s*["']%s`, regexp.QuoteMeta(payload))},
-		{"DOM_document_write", fmt.Sprintf(`document\.write\s*\(\s*["']%s`, regexp.QuoteMeta(payload))},
-		{"DOM_outerHTML", fmt.Sprintf(`outerHTML\s*=\s*["']%s`, regexp.QuoteMeta(payload))},
-		
-		// Atributos perigosos
-		{"ATTR_src", fmt.Sprintf(`\.src\s*=\s*["']%s["']`, regexp.QuoteMeta(payload))},
-		{"ATTR_href", fmt.Sprintf(`\.href\s*=\s*["']%s["']`, regexp.QuoteMeta(payload))},
-		{"ATTR_action", fmt.Sprintf(`\.action\s*=\s*["']%s["']`, regexp.QuoteMeta(payload))},
+		// location.href = url
+		{fmt.Sprintf(`location\.href\s*=\s*%s`, regexp.QuoteMeta(varName))},
+		// window.location.href = url
+		{fmt.Sprintf(`window\.location\.href\s*=\s*%s`, regexp.QuoteMeta(varName))},
+		// window.location = url
+		{fmt.Sprintf(`window\.location\s*=\s*%s`, regexp.QuoteMeta(varName))},
+		// location.assign(url)
+		{fmt.Sprintf(`location\.assign\s*\(\s*%s\s*\)`, regexp.QuoteMeta(varName))},
+		// location.replace(url)
+		{fmt.Sprintf(`location\.replace\s*\(\s*%s\s*\)`, regexp.QuoteMeta(varName))},
+		// eval(url)
+		{fmt.Sprintf(`eval\s*\(\s*%s\s*\)`, regexp.QuoteMeta(varName))},
+		// setTimeout(url)
+		{fmt.Sprintf(`setTimeout\s*\(\s*%s\s*[,)]`, regexp.QuoteMeta(varName))},
+		// innerHTML = url
+		{fmt.Sprintf(`innerHTML\s*=\s*%s`, regexp.QuoteMeta(varName))},
+		// document.write(url)
+		{fmt.Sprintf(`document\.write\s*\(\s*%s\s*\)`, regexp.QuoteMeta(varName))},
+		// .src = url
+		{fmt.Sprintf(`\.src\s*=\s*%s`, regexp.QuoteMeta(varName))},
+		// .href = url
+		{fmt.Sprintf(`\.href\s*=\s*%s`, regexp.QuoteMeta(varName))},
 	}
 	
 	for _, sink := range sinks {
-		re := regexp.MustCompile(sink.re)
-		matches := re.FindAllString(text, -1)
-		
-		for _, match := range matches {
-			// Verificar se não é um falso positivo
-			if !isFalsePositive(match) {
-				finding := fmt.Sprintf("DOM_DIRECT: %s: %s", sink.name, truncate(match, 70))
-				findings = append(findings, finding)
-			}
+		re := regexp.MustCompile(sink.pattern)
+		if re.MatchString(body) {
+			return true
 		}
 	}
 	
-	return findings
+	return false
 }
 
-func detectVariableFlows(text string, variables map[string]string) []string {
+func findDirectPayloadInSinks(body string) []string {
 	var findings []string
 	
-	if len(variables) == 0 {
-		return findings
+	// Payload direto em sinks
+	patterns := []struct {
+		name string
+		re   string
+	}{
+		// location.href = "https://efxtech.com"
+		{"location.href", `location\.href\s*=\s*["']https://efxtech\.com["']`},
+		// window.location.href = "https://efxtech.com"
+		{"window.location.href", `window\.location\.href\s*=\s*["']https://efxtech\.com["']`},
+		// window.location = "https://efxtech.com"
+		{"window.location", `window\.location\s*=\s*["']https://efxtech\.com["']`},
+		// location.assign("https://efxtech.com")
+		{"location.assign", `location\.assign\s*\(\s*["']https://efxtech\.com["']`},
+		// location.replace("https://efxtech.com")
+		{"location.replace", `location\.replace\s*\(\s*["']https://efxtech\.com["']`},
+		// eval("https://efxtech.com")
+		{"eval", `eval\s*\(\s*["']https://efxtech\.com["']`},
+		// setTimeout("https://efxtech.com")
+		{"setTimeout", `setTimeout\s*\(\s*["']https://efxtech\.com["']`},
+		// innerHTML = "https://efxtech.com"
+		{"innerHTML", `innerHTML\s*=\s*["']https://efxtech\.com["']`},
+		// document.write("https://efxtech.com")
+		{"document.write", `document\.write\s*\(\s*["']https://efxtech\.com["']`},
 	}
 	
-	// Para cada variável que contém o payload
-	for varName, varAssignment := range variables {
-		// Buscar usos desta variável em sinks perigosos
-		sinks := []struct {
-			name string
-			re   string
-		}{
-			// Redirecionamento
-			{"location_href", fmt.Sprintf(`location\.href\s*=\s*%s`, regexp.QuoteMeta(varName))},
-			{"window_location", fmt.Sprintf(`window\.location\s*=\s*%s`, regexp.QuoteMeta(varName))},
-			{"window_location_href", fmt.Sprintf(`window\.location\.href\s*=\s*%s`, regexp.QuoteMeta(varName))},
-			{"location_assign", fmt.Sprintf(`location\.assign\s*\(\s*%s\s*\)`, regexp.QuoteMeta(varName))},
-			{"location_replace", fmt.Sprintf(`location\.replace\s*\(\s*%s\s*\)`, regexp.QuoteMeta(varName))},
-			
-			// Execução de código
-			{"eval", fmt.Sprintf(`eval\s*\(\s*%s\s*\)`, regexp.QuoteMeta(varName))},
-			{"setTimeout", fmt.Sprintf(`setTimeout\s*\(\s*%s\s*[,)]`, regexp.QuoteMeta(varName))},
-			{"setInterval", fmt.Sprintf(`setInterval\s*\(\s*%s\s*[,)]`, regexp.QuoteMeta(varName))},
-			
-			// Manipulação DOM
-			{"innerHTML", fmt.Sprintf(`innerHTML\s*=\s*%s`, regexp.QuoteMeta(varName))},
-			{"document_write", fmt.Sprintf(`document\.write\s*\(\s*%s\s*\)`, regexp.QuoteMeta(varName))},
-			
-			// Atributos
-			{".src", fmt.Sprintf(`\.src\s*=\s*%s`, regexp.QuoteMeta(varName))},
-			{".href", fmt.Sprintf(`\.href\s*=\s*%s`, regexp.QuoteMeta(varName))},
-			{".action", fmt.Sprintf(`\.action\s*=\s*%s`, regexp.QuoteMeta(varName))},
-		}
-		
-		for _, sink := range sinks {
-			re := regexp.MustCompile(sink.re)
-			matches := re.FindAllString(text, -1)
-			
-			for _, match := range matches {
-				if !isFalsePositive(match) {
-					finding := fmt.Sprintf("DOM_FLOW: %s=%s → %s: %s", 
-						varName, truncate(varAssignment, 40), sink.name, truncate(match, 50))
-					findings = append(findings, finding)
-				}
+	for _, p := range patterns {
+		re := regexp.MustCompile(p.re)
+		matches := re.FindAllString(body, -1)
+		for _, match := range matches {
+			if !isFalsePositive(match) {
+				findings = append(findings, fmt.Sprintf("%s: %s", p.name, truncate(match, 60)))
 			}
 		}
 	}
@@ -515,86 +476,67 @@ func detectVariableFlows(text string, variables map[string]string) []string {
 
 // ==================== HTML REDIRECT DETECTION ====================
 
-func detectHTMLRedirects(bodyStr string) []string {
-	var findings []string
-	
-	// Remover conteúdo entre tags script e style
-	cleanedBody := removeScriptAndStyle(bodyStr)
+func detectHTMLRedirect(body string) (bool, string) {
+	// Remover scripts e styles para evitar falsos positivos
+	cleaned := removeScriptsAndStyles(body)
 	
 	patterns := []struct {
 		name string
 		re   *regexp.Regexp
 	}{
-		// Meta refresh
-		{"HTML_meta_refresh", regexp.MustCompile(`(?i)<meta[^>]+http-equiv\s*=\s*["']?refresh["']?[^>]+content\s*=\s*["'][^"']*(?:url|URL)\s*=\s*(?:https?://)?efxtech\.com`)},
-		
-		// Links que realmente redirecionam
-		{"HTML_a_href", regexp.MustCompile(`(?i)<a[^>]+href\s*=\s*["'](?:https?://)?efxtech\.com[^>]*>`)},
-		
-		// Form actions
-		{"HTML_form_action", regexp.MustCompile(`(?i)<form[^>]+action\s*=\s*["'](?:https?://)?efxtech\.com`)},
-		
-		// iframe src
-		{"HTML_iframe_src", regexp.MustCompile(`(?i)<iframe[^>]+src\s*=\s*["'](?:https?://)?efxtech\.com`)},
+		// <meta http-equiv="refresh" content="0;url=https://efxtech.com">
+		{"meta_refresh", regexp.MustCompile(`<meta[^>]+http-equiv=["']refresh["'][^>]+content=["'][^"']*url=https://efxtech\.com`)},
+		// <a href="https://efxtech.com">
+		{"a_href", regexp.MustCompile(`<a[^>]+href=["']https://efxtech\.com["'][^>]*>`)},
+		// <form action="https://efxtech.com">
+		{"form_action", regexp.MustCompile(`<form[^>]+action=["']https://efxtech\.com["'][^>]*>`)},
+		// <iframe src="https://efxtech.com">
+		{"iframe_src", regexp.MustCompile(`<iframe[^>]+src=["']https://efxtech\.com["'][^>]*>`)},
 	}
 	
 	for _, p := range patterns {
-		matches := p.re.FindAllString(cleanedBody, -1)
+		matches := p.re.FindAllString(cleaned, -1)
 		for _, match := range matches {
 			if !isFalsePositive(match) {
-				findings = append(findings, fmt.Sprintf("%s: %s", p.name, truncate(match, 70)))
+				return true, fmt.Sprintf("%s: %s", p.name, truncate(match, 60))
 			}
 		}
 	}
 	
-	return findings
+	return false, ""
 }
 
-// ==================== UTILITY FUNCTIONS ====================
-
-func normalizeSpaces(text string) string {
-	text = strings.ReplaceAll(text, "\n", " ")
-	text = strings.ReplaceAll(text, "\r", " ")
-	text = strings.ReplaceAll(text, "\t", " ")
+func removeScriptsAndStyles(html string) string {
+	// Remover scripts
+	reScript := regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`)
+	html = reScript.ReplaceAllString(html, "")
 	
-	// Remover múltiplos espaços
-	for strings.Contains(text, "  ") {
-		text = strings.ReplaceAll(text, "  ", " ")
-	}
-	
-	return text
-}
-
-func removeScriptAndStyle(html string) string {
-	// Remover conteúdo entre <script> tags
-	scriptPattern := regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`)
-	html = scriptPattern.ReplaceAllString(html, "")
-	
-	// Remover conteúdo entre <style> tags
-	stylePattern := regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`)
-	html = stylePattern.ReplaceAllString(html, "")
+	// Remover styles
+	reStyle := regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`)
+	html = reStyle.ReplaceAllString(html, "")
 	
 	return html
 }
 
-func containsExactDomain(text string) bool {
-	if text == "" {
-		return false
+func isFalsePositive(match string) bool {
+	// Falsos positivos comuns
+	falsePositives := []*regexp.Regexp{
+		// Parâmetros de query string: ?url=https://efxtech.com
+		regexp.MustCompile(`[?&][^=]+=https://efxtech\.com`),
+		// URLs codificadas: https%3A%2F%2Fefxtech.com
+		regexp.MustCompile(`https%3A%2F%2Fefxtech\.com`),
+		// Comentários: <!-- https://efxtech.com -->
+		regexp.MustCompile(`<!--.*https://efxtech\.com.*-->`),
+		// JSON values: "url": "https://efxtech.com"
+		regexp.MustCompile(`["']https://efxtech\.com["']\s*:`),
+		// CSS properties: url(https://efxtech.com)
+		regexp.MustCompile(`url\s*\(\s*https://efxtech\.com\s*\)`),
+		// Atributos CSS: --color: https://efxtech.com
+		regexp.MustCompile(`--[a-z-]+:\s*https://efxtech\.com`),
 	}
 	
-	// Padrões que indicam redirecionamento REAL (não parâmetros de query)
-	patterns := []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(?:url|URL)\s*=\s*(?:https?://)?efxtech\.com(?:[/?#]|$)`),
-	}
-	
-	// Primeiro verificar se não é um parâmetro de query string
-	queryParamPattern := regexp.MustCompile(`[?&][^=]+=(?:https?%3A%2F%2F|https?://)?efxtech\.com`)
-	if queryParamPattern.MatchString(text) {
-		return false
-	}
-	
-	for _, pattern := range patterns {
-		if pattern.MatchString(text) {
+	for _, fp := range falsePositives {
+		if fp.MatchString(match) {
 			return true
 		}
 	}
@@ -602,35 +544,20 @@ func containsExactDomain(text string) bool {
 	return false
 }
 
-func isFalsePositive(match string) bool {
-	// Padrões que indicam provável falso positivo
-	falsePositivePatterns := []*regexp.Regexp{
-		// Parâmetros de query string
-		regexp.MustCompile(`[?&][^=]+=https?://efxtech\.com`),
-		// Atributos CSS
-		regexp.MustCompile(`:\s*https?://efxtech\.com`),
-		// Comentários HTML
-		regexp.MustCompile(`<!--.*https?://efxtech\.com.*-->`),
-		// Valores JSON
-		regexp.MustCompile(`["']https?://efxtech\.com["']\s*:`),
-		// URLs codificadas
-		regexp.MustCompile(`https?%3A%2F%2Fefxtech\.com`),
-	}
-	
-	for _, pattern := range falsePositivePatterns {
-		if pattern.MatchString(match) {
-			return true
-		}
-	}
-	
-	return false
-}
+// ==================== UTILITY FUNCTIONS ====================
 
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // ==================== WORKERS ====================
@@ -653,12 +580,9 @@ func outputWorker(results <-chan string) {
 }
 
 func processTarget(baseURL string, client *http.Client) string {
-	// 1. Primeiro acessar a URL para extrair parâmetros
+	// 1. Acessar URL para extrair parâmetros
 	req, err := http.NewRequest("GET", baseURL, nil)
 	if err != nil {
-		if debugMode {
-			return fmt.Sprintf("\033[1;33mERROR - %s (%v)\033[0m", baseURL, err)
-		}
 		return ""
 	}
 	
@@ -673,7 +597,6 @@ func processTarget(baseURL string, client *http.Client) string {
 	
 	resp, err := client.Do(req)
 	if err != nil {
-		// Não mostra erros a menos que em debug mode
 		return ""
 	}
 	defer resp.Body.Close()
@@ -681,53 +604,50 @@ func processTarget(baseURL string, client *http.Client) string {
 	body, _ := ioutil.ReadAll(resp.Body)
 	bodyStr := string(body)
 	
-	// 2. Extrair parâmetros do DOM
+	// 2. Extrair parâmetros
 	allParams := extractParameters(bodyStr, extractMode)
 	
 	if len(allParams) == 0 {
-		// Sem parâmetros encontrados - só mostra se estiver em debug mode
 		if debugMode {
 			return fmt.Sprintf("\033[1;33mNO_PARAMS - %s\033[0m", baseURL)
 		}
 		return ""
 	}
 	
-	// 3. Dividir parâmetros em chunks
+	// 3. Dividir em chunks e testar
 	paramChunks := chunkSlice(allParams, paramCount)
 	
-	var foundIssue bool
+	var foundIssues bool
 	var issueResults []string
 	
-	// 4. Testar cada chunk de parâmetros
 	for _, chunk := range paramChunks {
 		if len(chunk) == 0 {
 			continue
 		}
 		
-		// Testar com método GET
+		// Testar GET
 		if methodMode == "" || methodMode == "get" {
 			if result := testMethod("GET", baseURL, chunk, client); result != "" {
-				foundIssue = true
+				foundIssues = true
 				issueResults = append(issueResults, result)
 			}
 		}
 		
-		// Testar com método POST
+		// Testar POST
 		if methodMode == "" || methodMode == "post" {
 			if result := testMethod("POST", baseURL, chunk, client); result != "" {
-				foundIssue = true
+				foundIssues = true
 				issueResults = append(issueResults, result)
 			}
 		}
 	}
 	
-	// 5. Retornar resultados
-	if foundIssue {
-		// Se onlyPOC, retornar apenas os que têm problemas
+	// 4. Retornar resultados
+	if foundIssues {
 		if onlyPOC {
 			var pocResults []string
 			for _, r := range issueResults {
-				if strings.Contains(r, "REDIRECT") || strings.Contains(r, "DOM_") {
+				if strings.Contains(r, "REFLECTED") {
 					pocResults = append(pocResults, r)
 				}
 			}
@@ -736,8 +656,6 @@ func processTarget(baseURL string, client *http.Client) string {
 		return strings.Join(issueResults, "\n")
 	}
 	
-	// Se não encontrou problema, mostra NOT_REFLECTED (sempre mostra)
-	// Mas só mostra se não estiver em modo onlyPOC
 	if !onlyPOC {
 		return fmt.Sprintf("\033[1;30mNOT_REFLECTED - %s (tested %d params)\033[0m", baseURL, len(allParams))
 	}
@@ -789,7 +707,6 @@ func testMethod(method, base string, params []string, client *http.Client) strin
 		}
 	}
 
-	// Fazer a requisição SEM seguir redirecionamentos
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		return http.ErrUseLastResponse
 	}
@@ -803,32 +720,31 @@ func testMethod(method, base string, params []string, client *http.Client) strin
 	body, _ := ioutil.ReadAll(resp.Body)
 	bodyStr := string(body)
 
-	// Analisar a resposta
-	hasIssue, issueContext := analyzeResponse(resp, bodyStr, finalURL)
+	// Analisar resposta
+	hasReflection, context := analyzeResponse(resp, bodyStr)
 	
-	if hasIssue {
-		color := "\033[1;33m" // Amarelo para Open Redirect
+	if hasReflection {
+		color := "\033[1;33m" // Amarelo padrão
 		
-		// Verificar se é DOM XSS (mais crítico)
-		if strings.Contains(issueContext, "DOM_") {
-			color = "\033[1;31m" // Vermelho para DOM XSS
+		// DOM reflection é mais crítico
+		if strings.Contains(context, "DOM_REFLECTION") {
+			color = "\033[1;31m" // Vermelho
 		}
 		
 		paramInfo := fmt.Sprintf("(%d params)", len(params))
 		
 		if method == "GET" {
 			if onlyPOC {
-				return fmt.Sprintf("%sREFLECTED - %s %s | %s\033[0m", color, finalURL, paramInfo, issueContext)
+				return fmt.Sprintf("%sREFLECTED - %s %s | %s\033[0m", color, finalURL, paramInfo, context)
 			}
-			return fmt.Sprintf("%sGET REFLECTED - %s %s | %s\033[0m", color, finalURL, paramInfo, issueContext)
+			return fmt.Sprintf("%sGET REFLECTED - %s %s | %s\033[0m", color, finalURL, paramInfo, context)
 		} else {
 			if onlyPOC {
-				return fmt.Sprintf("%sREFLECTED - %s %s | %s\033[0m", color, base, paramInfo, issueContext)
+				return fmt.Sprintf("%sREFLECTED - %s %s | %s\033[0m", color, base, paramInfo, context)
 			}
-			return fmt.Sprintf("%sPOST REFLECTED - %s %s | %s\033[0m", color, base, paramInfo, issueContext)
+			return fmt.Sprintf("%sPOST REFLECTED - %s %s | %s\033[0m", color, base, paramInfo, context)
 		}
 	} else if debugMode && !onlyPOC {
-		// Só mostra NOT_REFLECTED se estiver em debug mode
 		if method == "GET" {
 			return fmt.Sprintf("\033[1;30mGET NOT_REFLECTED - %s (%d params)\033[0m", finalURL, len(params))
 		} else {
